@@ -18,22 +18,31 @@ const Reactor = (() => {
     { r: .41, w: 1.5, n: 2, fill: .8, s: .9, a: .45 },
     { r: .29, w: 7, n: 10, fill: .62, s: .35, a: .32 },
   ];
-  const BARS = 96;
+  const BARS = 96, BUCKETS = 6;   // bars are drawn in 6 brightness groups: 6 strokes a frame instead of 96
 
   function mount(canvas, read) {
     const g = canvas.getContext('2d');
     const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.15 : 1;
     const freq = new Uint8Array(128), col = [79, 216, 255];
-    let size = 0, level = 0, spin = 0, lastMs = 0;
+    let size = 0, level = 0, spin = 0, lastMs = 0, visible = true, raf = 0;
+    const paths = Array.from({ length: BUCKETS }, () => []);
 
     new ResizeObserver(() => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       size = canvas.width = canvas.height = Math.round(canvas.clientWidth * dpr);
     }).observe(canvas);
 
+    // Draw only while the canvas is on screen and the tab is visible.
+    const wake = () => { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame); };
+    new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(canvas);
+    document.addEventListener('visibilitychange', wake);
+
     function frame(ms) {
-      requestAnimationFrame(frame);
+      raf = 0;
+      if (!visible || document.hidden) return;
+      raf = requestAnimationFrame(frame);
       if (!size) return;
+      if (ms - lastMs > 100) lastMs = ms;   // resuming after a pause: don't jump
       const { state, analyser, muted } = read();
       const t = ms / 1000, dt = Math.min(0.05, (ms - lastMs) / 1000); lastMs = ms;
       const c = size / 2, R = c * 0.96, px = size / 600;
@@ -73,21 +82,31 @@ const Reactor = (() => {
       }
 
       g.lineCap = 'round'; g.lineWidth = 2.4 * px;
+      for (const list of paths) list.length = 0;
       for (let i = 0; i < BARS; i++) {
         const a = i / BARS * TAU - Math.PI / 2;
         const mirrored = i < BARS / 2 ? i : BARS - i;   // symmetric left/right
-        const v = micLive ? freq[2 + mirrored] / 255 : level * (0.55 + 0.45 * Math.sin(i * 0.7 + t * 5) * Math.sin(i * 0.23 - t * 3));
+        const v = Math.min(1, micLive ? freq[2 + mirrored] / 255 : level * (0.55 + 0.45 * Math.sin(i * 0.7 + t * 5) * Math.sin(i * 0.23 - t * 3)));
         const r0 = R * 0.57, r1 = r0 + R * 0.2 * Math.max(0.03, v);
-        g.strokeStyle = `rgba(${rgb},${0.3 + v * 0.7})`;
-        g.beginPath(); g.moveTo(c + Math.cos(a) * r0, c + Math.sin(a) * r0); g.lineTo(c + Math.cos(a) * r1, c + Math.sin(a) * r1); g.stroke();
+        paths[Math.min(BUCKETS - 1, Math.floor(v * BUCKETS))].push(a, r0, r1);
       }
+      paths.forEach((list, b) => {
+        if (!list.length) return;
+        g.strokeStyle = `rgba(${rgb},${0.3 + (b + 0.5) / BUCKETS * 0.7})`;
+        g.beginPath();
+        for (let k = 0; k < list.length; k += 3) {
+          const a = list[k], cos = Math.cos(a), sin = Math.sin(a);
+          g.moveTo(c + cos * list[k + 1], c + sin * list[k + 1]); g.lineTo(c + cos * list[k + 2], c + sin * list[k + 2]);
+        }
+        g.stroke();
+      });
 
       const coreR = R * (0.13 + level * 0.06);
       const core = g.createRadialGradient(c, c, 0, c, c, coreR);
       core.addColorStop(0, 'rgba(255,255,255,.95)'); core.addColorStop(0.6, `rgba(${rgb},.85)`); core.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = core; g.beginPath(); g.arc(c, c, coreR, 0, TAU); g.fill();
     }
-    requestAnimationFrame(frame);
+    wake();
   }
 
   return { mount };

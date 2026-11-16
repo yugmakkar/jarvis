@@ -6,6 +6,7 @@ import SpotlightCard from './reactbits/SpotlightCard.jsx';
 import StarBorder from './reactbits/StarBorder.jsx';
 import CountUp from './reactbits/CountUp.jsx';
 import DotGrid from './reactbits/DotGrid.jsx';
+import { startScrollMotion, glide } from './motion.js';
 
 const REPO = 'https://github.com/yugmakkar/jarvis';
 const ACCENT = '#4fd8ff';
@@ -44,6 +45,9 @@ const CONNECTIONS = [
   ['Ollama on localhost', 'Optional local AI brain', 'Your question, to your own computer only'],
 ];
 
+// Lit word by word as it scrolls past. Words wrapped in * are highlighted.
+const MANIFESTO = 'No server to trust. No account to make. No bill, ever. Jarvis lives in *your* *browser,* listens on *your* *device* and answers to *you* *alone.*';
+
 const STEPS = [
   ['Get the code', 'git clone https://github.com/yugmakkar/jarvis.git', 'Or download the ZIP from GitHub. You need Python 3, which is free, for the tiny local server.'],
   ['Start it', 'cd jarvis && start.bat', 'On macOS or Linux run ./start.sh instead. Jarvis opens at localhost:5173 in your browser.'],
@@ -55,6 +59,11 @@ const STEPS = [
 const Arrow = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4 12 12 4M5.5 4H12v6.5" />
+  </svg>
+);
+const DownArrow = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" />
   </svg>
 );
 const GitHubMark = () => (
@@ -85,11 +94,12 @@ function CopyLine({ text, copyable = true }) {
 /* ---------- the console: demo reel until touched, then the real thing ---------- */
 
 let uid = 0;
-function useConsole() {
+// stateRef is shared with the hero reactor. It is a ref, so the reel's typing re-renders only the console, never the page.
+function useConsole(stateRef) {
   const [lines, setLines] = useState([]);
   const [state, setStateValue] = useState('standby');
   const [live, setLive] = useState(false);
-  const stateRef = useRef('standby'), liveRef = useRef(false), turn = useRef(0);
+  const liveRef = useRef(false), turn = useRef(0);
   const setState = s => { stateRef.current = s; setStateValue(s); };
   const push = (who, text) => { const id = ++uid; setLines(l => [...l.slice(-9), { id, who, text }]); return id; };
 
@@ -139,6 +149,21 @@ function useConsole() {
   return { lines, state, live, stateRef, run };
 }
 
+function Demo({ stateRef }) {
+  const con = useConsole(stateRef);
+  return (
+    <section id="demo" className="section demo">
+      <div className="section__head">
+        <p className="label" data-reveal>01 / Demo</p>
+        <h2 data-reveal style={{ '--d': '80ms' }}>Don&rsquo;t take our word. <span className="serif">Ask it something.</span></h2>
+        <p data-reveal style={{ '--d': '160ms' }}>The reel in the console is scripted. Type anything, or pick a suggestion, and the console switches to the real skills with live data. In the full app you say it instead.</p>
+        <a className="textlink" href="./app/" data-reveal style={{ '--d': '240ms' }}>Open the full voice version <Arrow /></a>
+      </div>
+      <div data-reveal="scale" style={{ '--d': '120ms' }}><Console con={con} /></div>
+    </section>
+  );
+}
+
 function Console({ con }) {
   const [value, setValue] = useState('');
   const logRef = useRef(null);
@@ -170,16 +195,19 @@ function Console({ con }) {
 /* ---------- page ---------- */
 
 export default function App() {
-  const con = useConsole();
+  const stateRef = useRef('standby');
+  useEffect(startScrollMotion, []);
   return (
     <>
       <header className="nav">
-        <a className="wordmark" href="#top">jarvis<sup>mk1</sup></a>
+        <a className="wordmark" href="#top" onClick={glide}>jarvis<sup>mk1</sup></a>
         <nav aria-label="Sections">
-          <a href="#demo">Demo</a><a href="#capabilities">Capabilities</a><a href="#privacy">Privacy</a><a href="#install">Install</a>
+          <a href="#demo" onClick={glide}>Demo</a><a href="#capabilities" onClick={glide}>Capabilities</a><a href="#privacy" onClick={glide}>Privacy</a><a href="#install" onClick={glide}>Install</a><a href="./app/">Open app</a>
         </nav>
         <a className="nav__cta" href={REPO} target="_blank" rel="noopener noreferrer"><GitHubMark /> GitHub</a>
+        <span className="progress" aria-hidden="true" />
       </header>
+      <div className="warp" aria-hidden="true" />
 
       <main id="top">
         <section className="hero">
@@ -192,69 +220,69 @@ export default function App() {
             </p>
             <h1>
               <span className="line">
-                Your own{' '}
+                Just say{' '}
                 <DecryptedText text="Jarvis." animateOn="view" sequential speed={70} characters="01<>/\\[]{}#*+=" encryptedClassName="enc" />
               </span>
-              <span className="line serif">Nobody else&rsquo;s.</span>
+              <span className="line serif">It answers only to you.</span>
             </h1>
             <p className="sub">
               A voice assistant that wakes to its name, answers out loud and pulls live answers from the web.
               It runs in your browser, on your computer. No account, no API key, no bill.
             </p>
             <div className="actions">
-              <StarBorder as="a" href="./app/" className="btn-primary" color={ACCENT} backgroundColor="#ffffff" textColor="#030508" radius={999} duration={5} glow={0.8}>
-                Launch the live demo <Arrow />
+              <StarBorder as="a" href="#demo" onClick={glide} className="btn-primary" color={ACCENT} backgroundColor="#ffffff" textColor="#030508" radius={999} duration={5} glow={0.8}>
+                Try it live <DownArrow />
               </StarBorder>
-              <a className="btn-ghost" href={REPO} target="_blank" rel="noopener noreferrer"><GitHubMark /> Get the code</a>
+              <a className="btn-ghost" href="#install" onClick={glide}>Get your own copy <DownArrow /></a>
             </div>
           </div>
           <div className="hero__core">
-            <ReactorCanvas stateRef={con.stateRef} className="reactor" label="The Jarvis reactor core, animating as it listens, thinks and speaks" />
+            <ReactorCanvas stateRef={stateRef} className="reactor" label="The Jarvis reactor core, animating as it listens, thinks and speaks" />
           </div>
           <dl className="strip">
             <div><dt><CountUp to={20} duration={1.4} /></dt><dd>built-in skills</dd></div>
             <div><dt><CountUp to={7} duration={1.4} /></dt><dd>free data sources</dd></div>
             <div><dt>0</dt><dd>trackers or cookies</dd></div>
-            <div><dt>0</dt><dd>cost, for you or your users</dd></div>
+            <div><dt>0</dt><dd>cost to you</dd></div>
           </dl>
         </section>
 
-        <section id="demo" className="section demo">
-          <div className="section__head">
-            <p className="label">01 / Demo</p>
-            <h2>Don&rsquo;t take our word. <span className="serif">Ask it something.</span></h2>
-            <p>The reel in the console is scripted. Type anything, or pick a suggestion, and the console switches to the real skills with live data. In the full app you say it instead.</p>
-            <a className="textlink" href="./app/">Open the full voice version <Arrow /></a>
-          </div>
-          <Console con={con} />
+        <section className="section manifesto-wrap" aria-label="In short">
+          <p className="manifesto">
+            {MANIFESTO.split(' ').map((w, i) => <span key={i} className={w.startsWith('*') ? 'w hl' : 'w'}>{w.replaceAll('*', '')} </span>)}
+          </p>
         </section>
+
+        <Demo stateRef={stateRef} />
 
         <section id="capabilities" className="section">
           <div className="section__head wide">
-            <p className="label">02 / Capabilities</p>
-            <h2>Everything an assistant should do. <span className="serif">Nothing it shouldn&rsquo;t.</span></h2>
+            <p className="label" data-reveal>02 / Capabilities</p>
+            <h2 data-reveal style={{ '--d': '80ms' }}>Everything an assistant should do. <span className="serif">Nothing it shouldn&rsquo;t.</span></h2>
           </div>
           <div className="cards">
             {CAPABILITIES.map(([title, body], i) => (
-              <SpotlightCard key={title} className="card" spotlightColor="rgba(79, 216, 255, 0.22)" spotlightSize={280}>
-                <span className="label">{String(i + 1).padStart(2, '0')}</span>
-                <h3>{title}</h3>
-                <p>{body}</p>
-              </SpotlightCard>
+              <div key={title} data-reveal="scale" style={{ '--d': `${(i % 3) * 100 + Math.floor(i / 3) * 60}ms` }}>
+                <SpotlightCard className="card" spotlightColor="rgba(79, 216, 255, 0.22)" spotlightSize={280}>
+                  <span className="label">{String(i + 1).padStart(2, '0')}</span>
+                  <h3>{title}</h3>
+                  <p>{body}</p>
+                </SpotlightCard>
+              </div>
             ))}
           </div>
         </section>
 
         <section id="privacy" className="section privacy">
           <div className="section__head">
-            <p className="label">03 / Privacy</p>
-            <h2>Private by construction, <span className="serif">not by promise.</span></h2>
-            <p>There is no Jarvis server, so there is nowhere for your data to go. Notes, your name and your settings stay in your browser&rsquo;s storage on your device.</p>
-            <p>The app ships with a browser-enforced allow-list. It can only contact the services in this table, and only when you ask for that thing. Ask &ldquo;what do you know about me&rdquo; to see everything it has saved, and erase it all from Settings.</p>
-            <p className="fine">On voice: in recent Chrome, Jarvis turns speech into text on your device, and the Systems panel says &ldquo;on this device&rdquo; when it does. Where the browser cannot, it uses the browser maker&rsquo;s online speech service instead, unless you choose &ldquo;on this device only&rdquo; in Settings. Typed commands involve no speech service at all.</p>
+            <p className="label" data-reveal>03 / Privacy</p>
+            <h2 data-reveal style={{ '--d': '80ms' }}>Private by construction, <span className="serif">not by promise.</span></h2>
+            <p data-reveal style={{ '--d': '160ms' }}>There is no Jarvis server, so there is nowhere for your data to go. Notes, your name and your settings stay in your browser&rsquo;s storage on your device.</p>
+            <p data-reveal style={{ '--d': '220ms' }}>The app ships with a browser-enforced allow-list. It can only contact the services in this table, and only when you ask for that thing. Ask &ldquo;what do you know about me&rdquo; to see everything it has saved, and erase it all from Settings.</p>
+            <p className="fine" data-reveal style={{ '--d': '280ms' }}>On voice: in recent Chrome, Jarvis turns speech into text on your device, and the Systems panel says &ldquo;on this device&rdquo; when it does. Where the browser cannot, it uses the browser maker&rsquo;s online speech service instead, unless you choose &ldquo;on this device only&rdquo; in Settings. Typed commands involve no speech service at all.</p>
             <a className="textlink" href={`${REPO}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noopener noreferrer">Read the full privacy notes <Arrow /></a>
           </div>
-          <div className="tablewrap">
+          <div className="tablewrap" data-reveal style={{ '--x': '40px', '--y': '0px', '--d': '120ms' }}>
             <table>
               <thead><tr><th>Service</th><th>Contacted when</th><th>What is sent</th></tr></thead>
               <tbody>{CONNECTIONS.map(row => <tr key={row[0]}>{row.map((cell, i) => <td key={i}>{cell}</td>)}</tr>)}</tbody>
@@ -264,12 +292,12 @@ export default function App() {
 
         <section id="install" className="section">
           <div className="section__head wide">
-            <p className="label">04 / Install</p>
-            <h2>Three steps to your own copy. <span className="serif">Then make it yours.</span></h2>
+            <p className="label" data-reveal>04 / Install</p>
+            <h2 data-reveal style={{ '--d': '80ms' }}>Three steps to your own copy. <span className="serif">Then make it yours.</span></h2>
           </div>
           <ol className="steps">
             {STEPS.map(([title, cmd, note], i) => (
-              <li key={title}>
+              <li key={title} data-reveal style={{ '--d': `${150 + i * 120}ms` }}>
                 <span className="label">Step {i + 1}</span>
                 <h3>{title}</h3>
                 <CopyLine text={cmd} copyable={i < 2} />
@@ -277,7 +305,7 @@ export default function App() {
               </li>
             ))}
           </ol>
-          <p className="after">
+          <p className="after" data-reveal>
             Want a different name, voice or skill? Fork it and edit one file.{' '}
             <a className="textlink" href={`${REPO}/blob/main/docs/CUSTOMIZE.md`} target="_blank" rel="noopener noreferrer">Read the customisation guide <Arrow /></a>
           </p>
