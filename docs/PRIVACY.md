@@ -19,12 +19,14 @@ Jarvis contacts a service only when you ask for the thing that service provides.
 | Service | Contacted when | What is sent |
 |---|---|---|
 | Open-Meteo (`api.open-meteo.com`, `geocoding-api.open-meteo.com`) | You ask about weather | The city name. If you name no city and allow location access, your coordinates |
-| Wikipedia (`en.wikipedia.org`) | You ask who or what something is | Your search words |
+| Wikipedia (`en.wikipedia.org`) | You ask a factual question, or for "something interesting" | Your question, as search words |
 | Hacker News (`hacker-news.firebaseio.com`) | You ask for news | Nothing about you |
 | Free Dictionary API (`api.dictionaryapi.dev`) | You ask for a definition | The word |
 | Frankfurter (`api.frankfurter.dev`) | You convert currency | The two currency codes, not the amount |
 | MyMemory (`api.mymemory.translated.net`) | You ask for a translation | The phrase you want translated |
 | icanhazdadjoke (`icanhazdadjoke.com`) | You ask for a joke | Nothing about you |
+| SomaFM radio (`ice2.somafm.com`, `ice4.somafm.com`, `ice6.somafm.com`, `ice1.somafm.com`) | You ask Jarvis to play music | Nothing about you. The station streams to your browser like any web radio |
+| SomaFM (`somafm.com`) | You ask "what's playing" | The station name |
 | Ollama (`localhost:11434`) | You have a local AI model running | Your question, to your own computer only |
 
 As with any web request, each service sees your IP address. No API keys, user IDs or cookies are sent, and the page sends no referrer.
@@ -35,9 +37,25 @@ If you allow notifications, reminders also appear as system notifications. These
 
 When you say "open ...", "search for ..." or "play ...", Jarvis opens that site in a new tab. From then on you are on that site, under its own privacy policy.
 
+## The AI brain
+
+Questions that no built-in skill covers are answered by the best of these that is available. All three are free.
+
+1. **Ollama**, if you run it on this computer. Your question goes to `localhost` only.
+2. **Chrome's built-in AI** (Gemini Nano), if you turn it on in **Settings**. The model runs inside Chrome on your computer, so your questions are never sent anywhere. Turning it on makes Chrome download the model once, a few gigabytes, from Google. That download is made by Chrome, not by this page, and nothing is billed. It needs Chrome 148 or later, about 22 GB of free disk space, and either a GPU with more than 4 GB of memory or 16 GB of RAM.
+3. **Wikipedia**, otherwise. Jarvis searches it and reads out the sentence that best answers your question.
+
+For factual questions, Jarvis also looks the topic up on Wikipedia when an AI is on, and gives the AI those facts along with your question. The search words go to Wikipedia; the AI itself stays on your computer.
+
+No model is trained on what you say. The conversation is kept in memory for follow-up questions and is gone when you close the tab.
+
+## Music
+
+"Play some music", "play jazz" and similar start SomaFM radio inside Jarvis. SomaFM is free, listener-supported internet radio with no adverts and no account. The page may only play audio from the four SomaFM stream hosts in the table above; that list is enforced by the browser like the rest of the allow-list. Streaming uses your internet data while music plays. "Play ... on YouTube" opens YouTube in a new tab instead.
+
 ## How this is enforced
 
-The app page carries a Content-Security-Policy that names the hosts above. The browser refuses any connection to a host that is not on the list, and refuses to run any script that is not one of the project's own files. A bug or a malicious change would have to edit that list in `app/index.html` to send data anywhere else, and that edit would be plain to see in the source.
+The app page carries a Content-Security-Policy that names the hosts above: one list for data (`connect-src`) and one for audio (`media-src`). The browser refuses any connection to a host that is not on the list, and refuses to run any script that is not one of the project's own files. A bug or a malicious change would have to edit that list in `app/index.html` to send data anywhere else, and that edit would be plain to see in the source.
 
 An automated test in `tests/` fails the build if the code contacts a host that is missing from the allow-list or from this page.
 

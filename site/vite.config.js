@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // The only servers the published page may contact. The browser enforces this list.
-const CONNECT = ['https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com', 'https://en.wikipedia.org',
+const CONNECT = ['https://somafm.com', 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com', 'https://en.wikipedia.org',
   'https://hacker-news.firebaseio.com', 'https://api.dictionaryapi.dev', 'https://icanhazdadjoke.com',
   'https://api.frankfurter.dev', 'https://api.mymemory.translated.net', 'http://localhost:11434'];
 const CSP = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; ` +

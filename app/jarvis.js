@@ -16,6 +16,7 @@
 
   function setState(s) {
     state = s;
+    music.duck(s === 'listening' || s === 'thinking' || s === 'speaking');   // quieter while he listens or talks
     document.body.dataset.state = s;
     $('statePill').textContent = s.toUpperCase();
   }
@@ -61,6 +62,36 @@
     const timer = setInterval(() => { if (!paint() || !node.isConnected) clearInterval(timer); }, 500);
   }
 
+  /* ---------------- music (free SomaFM radio; the stream hosts are the only audio sources the CSP allows) ---------------- */
+
+  const music = (() => {
+    const audio = new Audio();
+    audio.preload = 'none';
+    let id = null, urls = [], tried = 0, level = Number(Skills.settings.get('musicVolume', 0.6)), ducked = false;
+    const apply = () => { audio.volume = Math.max(0, Math.min(1, level * (ducked ? 0.25 : 1))); };
+    audio.addEventListener('error', () => {   // a stream host dropped mid-play: move to the next one
+      if (id && !audio.paused && ++tried < urls.length) { audio.src = urls[tried]; audio.play().catch(() => {}); }
+    });
+    return {
+      // Resolves true when sound is playing, 'click' if the browser wants a click first, false if no host answered.
+      async play(station) {
+        id = station; urls = Skills.streamUrls(station); apply();
+        for (tried = 0; tried < urls.length; tried++) {
+          audio.src = urls[tried];
+          try { await audio.play(); return true; } catch (err) { if (err && err.name === 'NotAllowedError') return 'click'; }
+        }
+        id = null;
+        return false;
+      },
+      pause() { audio.pause(); },
+      async resume() { if (!id) return false; try { await audio.play(); return true; } catch { return false; } },
+      setVolume(v) { level = Math.max(0.05, Math.min(1, v)); Skills.settings.set('musicVolume', level); apply(); },
+      duck(on) { ducked = on; apply(); },
+      get volume() { return level; },
+      get station() { return audio.paused ? null : id; },
+    };
+  })();
+
   /* ---------------- speaking ---------------- */
 
   function pickVoice() {
@@ -103,6 +134,7 @@
   const ctx = {
     stopSpeaking() { if (window.speechSynthesis) speechSynthesis.cancel(); },
     setMuted,
+    music,
     async announce(say, card) {   // for things that happen later, like a timer finishing
       const id = ++turn;
       if (card) showCard(card);
@@ -244,6 +276,7 @@
       ['Recognition', hearing.installing ? 'downloading pack' : Hearing.label(hearing.mode)],
       ['Voice output', window.speechSynthesis ? (voice ? voice.name.replace(/Microsoft |Google /, '').slice(0, 18) : 'default') : 'none'],
       ['Brain', Skills.brain()],
+      ['Music', music.station ? Skills.stationName(music.station) : 'off'],
       ...await Skills.systemRows()];
     $('sys').replaceChildren(...rows.flatMap(([k, v]) => {
       const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; return [dt, dd];
@@ -293,12 +326,40 @@
     $('setRate').value = s.get('rate', 1.05);
     $('setSpeech').checked = s.get('speech', true);
     $('setRecog').value = s.get('voiceMode', 'prefer');
+    showAiStatus();
     const voices = window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
     $('setVoice').replaceChildren(new Option('Automatic', ''), ...voices.map(v => new Option(`${v.name} (${v.lang})`, v.name)));
     $('setVoice').value = s.get('voice', '');
     $('settings').showModal();
   }
   $('settingsBtn').addEventListener('click', openSettings);
+
+  // Chrome's built-in AI: free and on-device. Chrome downloads the model once, and only after this click.
+  const AI_TEXT = {
+    available: ['On. Questions are answered by an AI model running on this computer.', ''],
+    downloadable: ['Off. Chrome can download its free on-device model (a one-time download of a few gigabytes, so use Wi-Fi). Nothing is billed, and questions never leave this computer.', 'Turn on built-in AI'],
+    downloading: ['Chrome is downloading the model. This can take a while; Jarvis keeps working meanwhile.', ''],
+    unavailable: ['This computer or Chrome version can\u2019t run Chrome\u2019s built-in AI. It needs Chrome 148 or later, about 22 GB free disk space, and a GPU with over 4 GB of memory or 16 GB of RAM. Ollama is a free alternative.', ''],
+    unsupported: ['This browser has no built-in AI. In Chrome 148 or later you can turn it on here. Ollama is a free alternative.', ''],
+  };
+  async function showAiStatus() {
+    const st = await Brain.chromeStatus();
+    const [text, button] = AI_TEXT[st] || AI_TEXT.unavailable;
+    $('aiStatus').textContent = Skills.brain().startsWith('Ollama') ? `Using Ollama (${Skills.brain().slice(9)}). ${text}` : text;
+    $('aiBtn').hidden = !button; $('aiBtn').textContent = button;
+  }
+  $('aiBtn').addEventListener('click', async () => {
+    $('aiBtn').disabled = true;
+    $('aiStatus').textContent = 'Starting the download in Chrome\u2026';
+    try {
+      await Brain.enableChrome(Skills.persona(), loaded => { $('aiStatus').textContent = `Downloading the on-device model: ${Math.round(loaded * 100)}%`; });
+      refreshSystems();
+      ctx.announce('Built-in AI is on. Ask me anything, and the answer is worked out on this computer.');
+      $('settings').close();
+    } catch (err) {
+      $('aiStatus').textContent = 'Chrome could not start its built-in AI: ' + (err && err.message || err);
+    } finally { $('aiBtn').disabled = false; }
+  });
   $('cancelBtn').addEventListener('click', () => $('settings').close());
   $('settingsForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -344,7 +405,7 @@
 
   $('initBtn').addEventListener('click', async () => {
     $('boot').classList.add('gone');
-    await Promise.all([initAudio(), Skills.probeBrain()]);
+    await Promise.all([initAudio(), Skills.probeBrain(), Brain.chromeStatus()]);
     setState('standby');
     const choice = SR && !micBlocked ? await setUpHearing() : (setMuted(true), { mode: 'off' });
     refreshSystems();

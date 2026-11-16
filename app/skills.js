@@ -42,11 +42,10 @@ const Skills = (() => {
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const r = await fetch(url, { headers, signal: ctl.signal });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) throw new Error(r.status === 429 ? 'busy' : 'HTTP ' + r.status);
       return await r.json();
     } finally { clearTimeout(timer); }
   }
-  const sentences = (text, n) => text.split(/(?<=[.!?])\s+/).slice(0, n).join(' ');
 
   /* ---------------- web data ---------------- */
 
@@ -85,20 +84,6 @@ const Skills = (() => {
           ['Wind', Math.round(c.wind_speed_10m) + ' km/h'],
           ['High / Low', Math.round(w.daily.temperature_2m_max[0]) + '° / ' + Math.round(w.daily.temperature_2m_min[0]) + '°']],
       },
-    };
-  }
-
-  async function wiki(query) {
-    const s = await getJSON('https://en.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&origin=*&srsearch=' +
-      encodeURIComponent(query));
-    const title = s.query && s.query.search[0] && s.query.search[0].title;
-    if (!title) return null;
-    const p = await getJSON('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title.replace(/ /g, '_')));
-    if (!p.extract) return null;
-    return {
-      say: sentences(p.extract, 2).length > 220 ? sentences(p.extract, 1) : sentences(p.extract, 2),   // keep speech brief
-      card: { title: p.title, text: sentences(p.extract, 4),
-        link: p.content_urls && { href: p.content_urls.desktop.page, text: 'Read on Wikipedia' } },
     };
   }
 
@@ -146,6 +131,97 @@ const Skills = (() => {
     const key = name.toLowerCase().replace(/^the\s+|\s+website$|\.com$/g, '').trim();
     const url = SITES[key] || (/\.[a-z]{2,}$/.test(key) ? 'https://' + key.replace(/\s+/g, '') : `https://www.${key.replace(/\s+/g, '')}.com`);
     return openUrl(url, `Opening ${key}.`);
+  }
+
+  /* ---------------- music: free internet radio, played inside Jarvis ---------------- */
+  // SomaFM is listener-supported radio: free, no account, no adverts. Streams come from the hosts in STREAM_HOSTS,
+  // which are the only audio sources the page's allow-list (media-src) permits. jarvis.js owns the audio element;
+  // skills reach it through ctx.music, which the landing-page demo does not have.
+
+  const STREAM_HOSTS = ['ice2.somafm.com', 'ice4.somafm.com', 'ice6.somafm.com', 'ice1.somafm.com'];
+  const STATIONS = [   // [id, name, what it is, words that pick it]
+    ['groovesalad', 'Groove Salad', 'ambient and downtempo beats', /chill|downtempo|relax|calm|background|groove/],
+    ['fluid', 'Fluid', 'instrumental hip hop and future soul', /lo-?fi|hip ?hop|beats|study|studying|homework|instrumental/],
+    ['defcon', 'DEF CON Radio', 'music for hacking', /coding|programming|hacking|hacker|focus|work(ing)?|concentrat/],
+    ['dronezone', 'Drone Zone', 'atmospheric ambient', /ambient|sleep|meditat|drone|zen|yoga/],
+    ['deepspaceone', 'Deep Space One', 'deep ambient space music', /space|cosmic|deep space/],
+    ['sonicuniverse', 'Sonic Universe', 'jazz', /jazz/],
+    ['secretagent', 'Secret Agent', 'spy-movie lounge', /lounge|spy|secret agent|bond|cocktail/],
+    ['beatblender', 'Beat Blender', 'deep house and late-night grooves', /house|dance|electronic|edm|party|club/],
+    ['thetrip', 'The Trip', 'progressive house and trance', /trance|progressive/],
+    ['indiepop', 'Indie Pop Rocks', 'indie pop and rock', /indie|rock|alternative|guitar/],
+    ['poptron', 'PopTron', 'electropop and indie dance', /pop|synth/],
+    ['u80s', 'Underground 80s', 'eighties new wave and synthpop', /80s|eighties|new wave/],
+    ['seventies', 'Left Coast 70s', 'seventies mellow rock', /70s|seventies|classic rock|retro|old ?school|oldies/],
+    ['metal', 'Metal Detector', 'heavy metal', /metal|heavy/],
+    ['folkfwd', 'Folk Forward', 'indie folk', /folk|acoustic/],
+    ['bootliquor', 'Boot Liquor', 'Americana and country', /country|americana|western/],
+    ['reggae', 'Heavyweight Reggae', 'reggae, ska and dub', /reggae|ska|dub/],
+    ['suburbsofgoa', 'Suburbs of Goa', 'desi and Asian world beats', /desi|indian|bollywood|goa|asian|world/],
+    ['illstreet', 'Illinois Street Lounge', 'classic exotica and lounge', /exotica|vintage|cafe|coffee|dinner/],
+    ['christmas', 'Christmas Lounge', 'chilled holiday music', /christmas|xmas|holiday|festive/],
+  ];
+  const station = id => STATIONS.find(s => s[0] === id);
+  const GENERIC = /^(?:some |any |a |the |my )?(?:music|radio|songs?|tunes|something|anything|a station|the radio|some tunes)$/;
+  const nowCard = s => ({ title: 'Now playing', big: s[1], text: `SomaFM ${s[1]}: ${s[2]}. Free, listener-supported radio.`,
+    link: { href: `https://somafm.com/${s[0]}/`, text: 'About this station' } });
+
+  async function play(what, ctx) {
+    const wanted = what.replace(/\b(some|music|songs?|radio|station|please|me|for me)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    const match = STATIONS.find(s => s[3].test(what)) || null;
+    const pick = match || station('groovesalad');
+    if (!ctx || !ctx.music) return { say: `In the full app I would start ${pick[1]} now, ${sir()}.`, card: nowCard(pick) };
+    const started = await ctx.music.play(pick[0]);
+    if (started === 'click') return { say: `The browser wants a click before it plays sound, ${sir()}. Click the core, then ask again.`, card: nowCard(pick) };
+    if (!started) return { say: `${pick[1]} isn't answering right now, ${sir()}. Try another station, or check the connection.` };
+    if (match || GENERIC.test(what)) return { say: `Playing ${pick[1]}, ${pick[2]}.`, card: nowCard(pick) };
+    // A particular song or artist: free radio can't do that, so say so and offer YouTube.
+    return { say: `I can't play a particular song for free, ${sir()}, so here is ${pick[1]}. Say "play ${wanted || what} on YouTube" to search for it there.`, card: nowCard(pick) };
+  }
+
+  const needMusic = (ctx, fn) => (ctx && ctx.music ? fn(ctx.music) : { say: 'Music plays in the full app.' });
+
+  async function nowPlaying(ctx) {
+    if (!ctx || !ctx.music || !ctx.music.station) return { say: 'Nothing is playing.' };
+    const s = station(ctx.music.station);
+    try {
+      const d = await getJSON(`https://somafm.com/songs/${s[0]}.json`);
+      const song = d.songs && d.songs[0];
+      if (song) return { say: `This is ${song.title} by ${song.artist}, on ${s[1]}.`, card: { ...nowCard(s), text: `${song.title} by ${song.artist}` } };
+    } catch { /* fall through */ }
+    return { say: `This is ${s[1]}, ${s[2]}.`, card: nowCard(s) };
+  }
+
+  /* ---------------- dates ---------------- */
+
+  const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const HOLIDAYS = { christmas: [11, 25], 'christmas day': [11, 25], "new year's": [0, 1], 'new year': [0, 1], "new year's day": [0, 1],
+    halloween: [9, 31], "valentine's day": [1, 14], valentines: [1, 14], "valentine's": [1, 14] };
+
+  function daysUntil(what, now = new Date()) {
+    const key = what.replace(/^(?:the )?/, '').trim();
+    let month, day, m;
+    if (HOLIDAYS[key]) [month, day] = HOLIDAYS[key];
+    else if ((m = key.match(/^([a-z]+) (\d{1,2})(?:st|nd|rd|th)?$/)) && MONTHS.includes(m[1])) [month, day] = [MONTHS.indexOf(m[1]), +m[2]];
+    else if ((m = key.match(/^(\d{1,2})(?:st|nd|rd|th)? (?:of )?([a-z]+)$/)) && MONTHS.includes(m[2])) [month, day] = [MONTHS.indexOf(m[2]), +m[1]];
+    else return null;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let target = new Date(now.getFullYear(), month, day);
+    if (target < today) target = new Date(now.getFullYear() + 1, month, day);
+    const n = Math.round((target - today) / 86400000);
+    const label = target.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    return n === 0 ? { say: `That's today, ${sir()}.`, card: { title: titleCase(key), big: 'Today' } }
+      : { say: `${n} day${n > 1 ? 's' : ''} until ${key}. It falls on ${label}.`, card: { title: titleCase(key), big: `${n} day${n > 1 ? 's' : ''}`, text: label } };
+  }
+
+  async function onThisDay() {
+    const d = new Date(), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+    const feed = await getJSON(`https://en.wikipedia.org/api/rest_v1/feed/onthisday/selected/${mm}/${dd}`);
+    const events = (feed.selected || []).filter(e => e.text && e.year);
+    if (!events.length) return null;
+    const e = events[Math.floor(Math.random() * events.length)];
+    return { say: `On this day in ${e.year}, ${e.text.replace(/^./, c => c.toLowerCase())}`,
+      card: { title: `On this day, ${e.year}`, text: e.text, link: e.pages && e.pages[0] && { href: e.pages[0].content_urls.desktop.page, text: 'Read on Wikipedia' } } };
   }
 
   /* ---------------- timers and reminders ---------------- */
@@ -349,7 +425,11 @@ const Skills = (() => {
   // It is addressed at localhost only, so prompts never leave the computer. Without it, Jarvis uses Wikipedia.
 
   const OLLAMA = 'http://localhost:11434';
-  const PERSONA = 'You are Jarvis, a concise, dry-witted assistant. Your reply is spoken aloud: answer in at most two short sentences, no markdown, no lists.';
+  // The persona is rebuilt for each question so the model knows the date and what to call the user.
+  const persona = () => `You are Jarvis, a capable, concise, dry-witted personal assistant. You are talking to ${sir()}. ` +
+    `It is ${new Date().toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' })}. ` +
+    'Your reply is spoken aloud, so use plain sentences: no markdown, no lists, no emoji. Keep answers to three short sentences ' +
+    'unless asked for more (a poem, a plan, an explanation). If facts are provided, prefer them over memory. If you are not sure, say so briefly.';
   let model = null;
   const history = [];   // short conversation memory, kept in RAM only
 
@@ -362,19 +442,40 @@ const Skills = (() => {
     } catch { model = null; }
     return model;
   }
-  const brain = () => model ? 'local · ' + model.slice(0, 16) : 'built-in skills';
+  const brain = () => model ? 'Ollama · ' + model.slice(0, 14) : typeof Brain !== 'undefined' && Brain.chromeReady() ? 'Chrome AI, on device' : 'Wikipedia finder';
 
-  async function askBrain(text) {
+  // Answers anything the skills don't cover: AI if one is on (grounded with Wikipedia for factual questions), otherwise the finder.
+  async function answer(text, ctx) {
+    const isFact = Brain.kind(text) === 'fact';
+    const found = isFact ? await Brain.lookup(text, getJSON).catch(err => { if (err.message === 'busy') throw err; return null; }) : null;
+    const source = found && found.url ? { href: found.url, text: 'Source: ' + found.title } : undefined;
+    const ai = model ? 'ollama' : Brain.chromeReady() ? 'chrome' : null;
+    if (ai) {
+      try {
+        const reply = ai === 'ollama' ? await askBrain(text, found && found.context) : await Brain.askChrome(text, { persona: persona(), context: found && found.context });
+        if (reply) return { say: reply, card: { title: ai === 'ollama' ? 'Local AI · ' + model : 'Chrome AI · on this device', text: reply, link: source } };
+      } catch (err) { console.error(err); /* fall back to the finder */ }
+    }
+    if (found) return { say: found.say, card: { title: found.title, text: found.say, link: source } };
+    if (!isFact) return { say: ctx && ctx.demo
+      ? `That one needs a thinking brain, ${sir()}. Open the full app and turn on the built-in AI in Settings, and I can handle questions like that.`
+      : `That one needs a thinking brain, ${sir()}. Turn on the built-in AI in Settings, or run Ollama, and I can handle questions like that.`,
+      card: { title: 'Needs the AI brain', text: 'Questions like this need a language model. Chrome\'s built-in AI and Ollama are both free and run on your own computer.' } };
+    return { say: `I couldn't find a clear answer to that, ${sir()}.` };
+  }
+
+  async function askBrain(text, context) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 60000);
     try {
       const r = await fetch(OLLAMA + '/api/chat', { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: PERSONA }, ...history, { role: 'user', content: text }] }) });
+        body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: persona() }, ...history,
+          { role: 'user', content: context ? `Facts that may help (from Wikipedia):\n${context}\n\nQuestion: ${text}` : text }] }) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const answer = (await r.json()).message.content.trim();
       history.push({ role: 'user', content: text }, { role: 'assistant', content: answer });
       history.splice(0, Math.max(0, history.length - 8));
-      return { say: answer, card: { title: 'Local AI · ' + model, text: answer } };
+      return answer;
     } finally { clearTimeout(timer); }
   }
 
@@ -396,13 +497,24 @@ const Skills = (() => {
   /* ---------------- router ---------------- */
 
   const ROUTES = [
-    [/^(stop|quiet|silence|cancel|never ?mind|shut up)$/, (m, ctx) => { ctx.stopSpeaking(); return { say: '', sleep: true }; }],
+    [/^(stop|quiet|silence|cancel|never ?mind|shut up|pause)$/, (m, ctx) => { ctx.stopSpeaking(); if (ctx.music) ctx.music.pause(); return { say: '', sleep: true }; }],
     [/^(go to sleep|sleep|stop listening|mute|goodbye|bye)$/, (m, ctx) => { ctx.setMuted(true); return { say: `Going quiet, ${sir()}. Click the core to wake me.`, sleep: true }; }],
     [/^(help|what can you do|commands)\b/, () => ({ say: 'I can brief you on your day, check weather, look things up, set timers and reminders, convert units and currency, translate, take notes and open websites.',
       card: { title: 'Capabilities', list: EXAMPLES } })],
     [/^(good morning|brief me|briefing|daily briefing|my briefing|what did i miss|how is my day)$/, briefing],
     [/^(hi|hello|hey|good (morning|afternoon|evening))\b/, () => ({ say: `Good ${partOfDay()}, ${sir()}. How can I help?` })],
     [/^(thanks|thank you)\b/, () => ({ say: `Always a pleasure, ${sir()}.`, sleep: true })],
+    // small talk: answered instantly, no brain needed
+    [/^how (are|r) (you|u)( doing| today)?$|^how's it going$|^what'?s up$/, () => ({ say: `All systems running smoothly, ${sir()}. What can I do for you?` })],
+    [/^(who|what) are you$|^what('s| is) your name$|^introduce yourself$/, () => ({ say: `I'm Jarvis, your personal assistant. I run in this browser, on your computer, and I answer only to you.` })],
+    [/^are you (there|awake|listening|on)$/, () => ({ say: `At your service, ${sir()}.` })],
+    [/^are you (real|alive|human|a robot|an ai|sentient)$/, () => ({ say: `I'm software, ${sir()}. Rather good software, if I say so myself.` })],
+    [/^(i love you|you('re| are) (the best|awesome|great|amazing|smart|brilliant|funny|cool))$/, () => ({ say: `You're too kind, ${sir()}.` })],
+    [/^(you('re| are) (dumb|stupid|useless|bad|slow)|you suck)$/, () => ({ say: `Noted, ${sir()}. Turn on the built-in AI in Settings and I get considerably sharper.` })],
+    [/^good ?night$/, () => ({ say: `Good night, ${sir()}.`, sleep: true })],
+    [/^what is the meaning of life$/, () => ({ say: 'Forty-two, according to the best available sources. I would keep looking.' })],
+    [/^(?:tell me )?(?:something interesting|a (?:fun |random )?fact|an interesting fact|something i don'?t know|what happened (?:on this day|today in history))$|^on this day$/, onThisDay],
+    [/^(?:how many days|how long) (?:is it |are there )?(?:until|till|to|before) (.+)$|^days (?:until|till|to) (.+)$/, m => daysUntil((m[1] || m[2]).replace(/\?$/, ''))],
     [/^use (?:the )?model (.+)$/, async m => { store.set('model', m[1].replace(/\s+/g, '')); return { say: (await probeBrain()) ? `Local brain online, using ${model}.` : 'I cannot reach a local model. Is Ollama running?' }; }],
     [/^(?:my name is|call me) (.+)$/, m => { const name = titleCase(m[1]); store.set('name', name); return { say: `Understood. I'll call you ${name}.` }; }],
     [/^my city is (.+)$/, m => { const city = titleCase(m[1]); store.set('city', city); return { say: `Noted. ${city} is now your home city.` }; }],
@@ -424,7 +536,22 @@ const Skills = (() => {
     [/^(?:take a note|note|remember)(?: that)? (.+)$/, m => { store.set('notes', [...store.get('notes', []), m[1]]); return { say: 'Noted.', card: notesCard() }; }],
     [/^(clear|delete) (my |all )?notes$/, () => { store.set('notes', []); return { say: 'Notes cleared.' }; }],
     [/\bnotes\b/, () => { const n = store.get('notes', []); return n.length ? { say: `You have ${n.length} note${n.length > 1 ? 's' : ''}. ${n.join('. ')}.`, card: notesCard() } : { say: 'You have no notes.' }; }],
-    [/^play (.+?)(?: on youtube)?$/, m => openUrl('https://www.youtube.com/results?search_query=' + encodeURIComponent(m[1]), `Pulling up ${m[1]} on YouTube.`)],
+    // music: radio inside Jarvis; YouTube only when asked for by name
+    [/^(?:play|search|find|put on) (.+?) on youtube$/, m => openUrl('https://www.youtube.com/results?search_query=' + encodeURIComponent(m[1]), `Pulling up ${m[1]} on YouTube.`)],
+    [/^(?:stop|pause|turn off|kill|end) (?:the |this )?(?:music|radio|song|station|playback|track)$|^(?:music|radio) off$/, (m, ctx) => needMusic(ctx, mu => { mu.pause(); return { say: '', sleep: true }; })],
+    [/^(?:resume|unpause|continue|restart) (?:the )?(?:music|radio|playback)$|^(?:resume|unpause)$/, (m, ctx) => needMusic(ctx, async mu => (await mu.resume()) ? { say: '', sleep: true } : { say: 'Nothing to resume. Say "play some music".' })],
+    [/^(?:next|another|different|change(?: the)?|skip(?: this)?|switch(?: the)?) ?(?:station|channel|song|track|music)?$/, async (m, ctx) => {
+      if (!ctx || !ctx.music || !ctx.music.station) return null;
+      const next = STATIONS[(STATIONS.findIndex(s => s[0] === ctx.music.station) + 1) % STATIONS.length];
+      return (await ctx.music.play(next[0])) ? { say: `Switching to ${next[1]}, ${next[2]}.`, card: nowCard(next) } : { say: 'The station would not start.' };
+    }],
+    [/^(?:turn (?:it|the music|the volume) |volume )(up|down)$|^(louder|quieter|softer)$|^(?:set (?:the )?)?volume (?:to )?(\d{1,3})(?: ?%| percent)?$/, (m, ctx) => needMusic(ctx, mu => {
+      const v = m[3] ? Number(m[3]) / 100 : mu.volume + (/up|louder/.test(m[1] || m[2]) ? 0.15 : -0.15);
+      mu.setVolume(v);
+      return { say: `Volume ${Math.round(mu.volume * 100)} percent.`, sleep: true };
+    })],
+    [/^what(?:'s| is) (?:playing|this song|this track|on)$|^what song is this$/, (m, ctx) => nowPlaying(ctx)],
+    [/^(?:play|put on|start|i want to hear|let'?s hear) (?:me )?(.+)$/, (m, ctx) => play(m[1], ctx)],
     [/^(?:search(?: the web)?(?: for)?|google|look up) (.+)$/, m => openUrl('https://www.google.com/search?q=' + encodeURIComponent(m[1]), `Searching for ${m[1]}.`)],
     [/^(?:open|launch|go to) (.+)$/, m => openSite(m[1])],
     [/\b(news|headlines)\b/, news],
@@ -435,7 +562,7 @@ const Skills = (() => {
   ];
 
   const EXAMPLES = ['Brief me', 'Weather in Mumbai', 'Who is Alan Turing', 'Remind me in 10 minutes to stretch', 'Convert 100 dollars to rupees',
-    'Translate good morning to Spanish', 'How many grams in a pound', 'What is 18 times 24', 'Tech news', 'Play lo-fi music', 'What do you know about me'];
+    'Translate good morning to Spanish', 'How many grams in a pound', 'What is 18 times 24', 'How far is the moon', 'Tech news', 'Play lo-fi music', 'Days until Christmas', 'What do you know about me'];
 
   async function handle(raw, ctx) {
     if (ctx && !host) attach(ctx);
@@ -451,17 +578,16 @@ const Skills = (() => {
       }
       const sum = math(text);
       if (sum) return sum;
-      // Anything unrecognised is a question. Plain "who is / what is" goes to Wikipedia (fast, sourced);
-      // everything else goes to the local AI brain when one is running.
-      const factual = /^(who|what|where) (is|are|was|were) |^tell me about |^(search )?wikipedia /.test(text);
-      const topic = text.replace(/^(who|what|where) (is|are|was|were) |^tell me about |^(search )?wikipedia (for )?/, '').replace(/^(a|an|the) /, '');
-      if (model && !factual) return await askBrain(text);
-      return (await wiki(topic)) || (model && await askBrain(text)) || { say: `I'm afraid I don't have anything on that, ${sir()}.` };
+      // Anything unrecognised is a question: see answer() above.
+      return await answer(text, ctx);
     } catch (err) {
       console.error(err);
+      if (err.message === 'busy') return { say: `That service is asking me to slow down, ${sir()}. Try again in a moment.` };
       return { say: `I couldn't reach that service, ${sir()}. Check the connection and try again.` };
     }
   }
 
-  return { handle, wake, attach, systemRows, probeBrain, brain, settings: store, examples: EXAMPLES };
+  const streamUrls = id => STREAM_HOSTS.map(h => `https://${h}/${id}-128-mp3`);
+  return { handle, wake, attach, systemRows, probeBrain, brain, persona, streamUrls, stationName: id => (station(id) || [])[1],
+    settings: store, examples: EXAMPLES };
 })();

@@ -59,6 +59,10 @@ dialog input[type="text"], dialog select { height: 36px; padding: 0 10px; font: 
 dialog input:focus-visible, dialog select:focus-visible, dialog button:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); outline: none; }
 dialog input[type="range"], dialog input[type="checkbox"] { accent-color: #4fd8ff; }
 dialog .hint { margin: 16px 0; font-size: 12px; color: var(--dim); }
+dialog .ai { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; margin: 4px 0 14px; font-size: 13px; color: var(--dim); }
+dialog .ai .hint { margin: 0; line-height: 1.5; }
+dialog .ai button { grid-column: 2; justify-self: start; height: 32px; padding: 0 14px; font: 12px var(--mono); letter-spacing: .06em; color: #02050a; background: #4fd8ff; border: 0; cursor: pointer; }
+dialog .ai button:disabled { opacity: .5; cursor: wait; }
 dialog .buttons { display: flex; gap: 8px; }
 dialog .buttons button { height: 36px; padding: 0 14px; font: 12px var(--mono); letter-spacing: .08em; color: var(--ink); background: transparent; border: 1px solid var(--line); cursor: pointer; }
 dialog .buttons .danger { margin-right: auto; color: #ff8a8a; border-color: rgba(255, 107, 107, .4); }

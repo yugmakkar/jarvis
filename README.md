@@ -6,7 +6,7 @@ A free, open-source voice assistant that wakes to its name, answers out loud and
 
 - **Free for everyone.** No account, no API key, no subscription. Every data source is a free public API.
 - **Private.** There is no Jarvis server. Your notes and settings stay in your browser, and in recent Chrome your voice is recognised on your own computer. See [docs/PRIVACY.md](docs/PRIVACY.md).
-- **Small.** The assistant is about 1,000 lines of plain JavaScript with no framework and no build step.
+- **Small.** The assistant is about 1,400 lines of plain JavaScript with no framework and no build step.
 - **Tested.** An automated test suite runs before every deployment.
 - **Yours.** Fork it, rename it, add skills. See [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md).
 
@@ -16,7 +16,8 @@ A free, open-source voice assistant that wakes to its name, answers out loud and
 |---|---|
 | "Good morning" / "Brief me" | A spoken briefing: time, weather, top headlines, your reminders |
 | "Jarvis, weather in Mumbai" | Current conditions and today's high and low |
-| "Who is Alan Turing" / "What is a black hole" | A short spoken answer from Wikipedia |
+| "How far is the Moon" / "Why is the sky blue" / "Who won the 2022 World Cup" | The sentence that answers it, found on Wikipedia, with the source on the display |
+| "Write me a poem about rain" / "Help me plan a trip to Goa" | Answered by an AI running on your computer, once you turn one on (see below) |
 | "Tech news" | The top stories on Hacker News |
 | "Define serendipity" | A dictionary definition |
 | "What is 18 times 24" | Arithmetic |
@@ -25,8 +26,10 @@ A free, open-source voice assistant that wakes to its name, answers out loud and
 | "Convert 100 dollars to rupees" | Live exchange rates |
 | "How many grams in a pound" / "5 miles to km" / "100 celsius to fahrenheit" | Unit conversion, done on your device |
 | "Translate good morning to Spanish" | Translation into 20 languages, spoken in that language |
+| "Play some music" / "Play lo-fi" / "Play jazz" / "What's playing" / "Volume down" / "Stop the music" | Free SomaFM radio, played inside Jarvis. "Play ... on YouTube" searches YouTube instead |
+| "Days until Christmas" / "Tell me something interesting" / "How are you" | What you would expect |
 | "Remember to call mom" / "What are my notes" | Notes saved on your device |
-| "Open YouTube" / "Search for pasta recipes" / "Play lo-fi" | Opens the site, a Google search or a YouTube search |
+| "Open YouTube" / "Search for pasta recipes" | Opens the site or a Google search in a new tab |
 | "What time is it" / "System status" / "Tell me a joke" | What you would expect |
 | "What do you know about me" | Shows everything saved on your device |
 | "Cancel all reminders" / "Go to sleep" | Clears the schedule / mutes the microphone until you click the core |
@@ -61,15 +64,19 @@ In Chrome or Edge, with Jarvis open, click the install icon at the right of the 
 
 The installed interface loads offline. Skills that fetch web data need a connection.
 
-### Optional: a local AI brain
+### The AI brain
 
-Out of the box, open-ended questions are answered from Wikipedia. For real conversation, install [Ollama](https://ollama.com) (free) and pull a model:
+Out of the box, Jarvis answers factual questions by finding the right sentence on Wikipedia. For conversation, writing and problem solving, turn on an AI that runs on your own computer. Both options are free, and your questions never leave the machine.
+
+**Chrome's built-in AI (easiest).** In Chrome 148 or later, open **SETTINGS** and click **Turn on built-in AI**. Chrome downloads its on-device model (Gemini Nano) once, which takes a few gigabytes of disk and data, so use Wi-Fi. It needs about 22 GB of free disk space and either a GPU with more than 4 GB of memory or 16 GB of RAM. The Systems panel then shows `Brain: Chrome AI, on device`.
+
+**Ollama (most capable).** Install [Ollama](https://ollama.com) and pull a model:
 
 ```bash
 ollama pull llama3.2
 ```
 
-When Ollama is running, Jarvis detects it at start-up and sends anything that is not a built-in skill to the model on your own machine. The Systems panel shows `Brain: local` when it is active. Say "use model llama3.2" to pick between installed models.
+When Ollama is running, Jarvis detects it at start-up and uses it ahead of Chrome's AI. The Systems panel shows `Brain: Ollama` when it is active. Say "use model llama3.2" to pick between installed models.
 
 If you use the hosted version rather than a local copy, Ollama must be told to accept requests from that page. Set the environment variable `OLLAMA_ORIGINS=https://yugmakkar.github.io` and restart Ollama.
 
@@ -96,6 +103,7 @@ Jarvis is a web page, so it cannot launch desktop programs, change system settin
 app/        The assistant. Plain HTML, CSS and JavaScript. This is all you need to run Jarvis.
   jarvis.js   Voice loop: hearing, deciding, speaking
   hearing.js  Chooses on-device or online speech recognition
+  brain.js    Answers open questions: the Wikipedia answer finder and Chrome's built-in AI
   skills.js   Every command, as a list of pattern + function pairs
   reactor.js  The animated core
   sw.js       Offline cache for the installed app
@@ -124,6 +132,6 @@ Pushing to `main` runs the tests, and only if they pass rebuilds and publishes t
 
 ## Credits and licence
 
-MIT licensed, see [LICENSE](LICENSE). Data from [Open-Meteo](https://open-meteo.com), [Wikipedia](https://www.wikipedia.org), [Hacker News](https://news.ycombinator.com), the [Free Dictionary API](https://dictionaryapi.dev), [Frankfurter](https://frankfurter.dev), [MyMemory](https://mymemory.translated.net) and [icanhazdadjoke](https://icanhazdadjoke.com). The landing page uses components from [React Bits](https://reactbits.dev), which carry their own licence (see `site/src/reactbits/README.md`).
+MIT licensed, see [LICENSE](LICENSE). Data from [Open-Meteo](https://open-meteo.com), [Wikipedia](https://www.wikipedia.org), [Hacker News](https://news.ycombinator.com), the [Free Dictionary API](https://dictionaryapi.dev), [Frankfurter](https://frankfurter.dev), [MyMemory](https://mymemory.translated.net) and [icanhazdadjoke](https://icanhazdadjoke.com). Music is [SomaFM](https://somafm.com), free listener-supported radio; if you enjoy it, they accept donations. The landing page uses components from [React Bits](https://reactbits.dev), which carry their own licence (see `site/src/reactbits/README.md`).
 
 This is a fan-made project and is not affiliated with Marvel or Disney.

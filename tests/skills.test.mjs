@@ -8,7 +8,8 @@ import vm from 'node:vm';
 import { readFileSync, existsSync } from 'node:fs';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
-const SOURCE = read('app/skills.js');
+// brain.js loads before skills.js in the page, so the sandbox loads them in the same order.
+const SOURCE = read('app/brain.js') + '\n' + read('app/skills.js');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Canned replies, matched by a piece of the URL. Order matters: the first match wins.
@@ -18,9 +19,11 @@ const FAKE = {
     current: { temperature_2m: 29.4, apparent_temperature: 32, relative_humidity_2m: 60, wind_speed_10m: 12, weather_code: 0 },
     daily: { temperature_2m_max: [33], temperature_2m_min: [24] },
   },
-  'w/api.php': { query: { search: [{ title: 'Alan Turing' }] } },
-  'page/summary': { title: 'Alan Turing', extract: 'Alan Turing was an English mathematician. He was influential.',
-    content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Alan_Turing' } } },
+  'onthisday': { selected: [{ year: 1969, text: 'Apollo 11 lands on the Moon.', pages: [{ content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Apollo_11' } } }] }] },
+  'w/api.php': { query: { pages: {
+    1: { index: 1, title: 'Alan Turing', fullurl: 'https://en.wikipedia.org/wiki/Alan_Turing', extract: 'Alan Turing was an English mathematician and computer scientist. He was highly influential in the development of theoretical computer science.' },
+  } } },
+  'somafm.com/songs': { songs: [{ title: 'Sweet Apathy', artist: 'Zero Cult' }] },
   'topstories.json': [1, 2, 3, 4, 5],
   '/item/': { title: 'A headline' },
   'dictionaryapi.dev': [{ word: 'serendipity', meanings: [{ partOfSpeech: 'noun', definitions: [{ definition: 'A happy accident.' }] }] }],
@@ -29,7 +32,7 @@ const FAKE = {
   'mymemory': { responseData: { translatedText: 'buenos días' } },
 };
 
-function boot(saved = {}, { offline = false } = {}) {
+function boot(saved = {}, { offline = false, extra = {} } = {}) {
   // A storage object whose only enumerable keys are the stored items, like the real localStorage.
   const localStorage = {};
   Object.defineProperties(localStorage, {
@@ -53,11 +56,12 @@ function boot(saved = {}, { offline = false } = {}) {
     navigator: { onLine: true },
     window: { open: url => { opened.push(url); return {}; } },
     console: { error() {}, log() {} },
+    ...extra,
   });
-  vm.runInContext(SOURCE + '\n;globalThis.__skills = Skills;', sandbox);
+  vm.runInContext(SOURCE + '\n;globalThis.__skills = Skills; globalThis.__brain = Brain;', sandbox);
   const Skills = sandbox.__skills;
   const ctx = { stopSpeaking() {}, setMuted() {}, announce: say => said.push(say) };
-  return { Skills, ask: text => Skills.handle(text, ctx), ctx, calls, said, opened };
+  return { Skills, Brain: sandbox.__brain, ask: text => Skills.handle(text, ctx), ctx, calls, said, opened };
 }
 
 /* ---------------- wake word ---------------- */
@@ -183,7 +187,7 @@ test('opening sites and searches', async () => {
   const { ask, opened } = boot();
   await ask('open youtube');
   await ask('search for pasta recipes');
-  await ask('play lo-fi music');
+  await ask('play lo-fi music on youtube');
   assert.equal(opened[0], 'https://www.youtube.com');
   assert.equal(opened[1], 'https://www.google.com/search?q=pasta%20recipes');
   assert.equal(opened[2], 'https://www.youtube.com/results?search_query=lo-fi%20music');
@@ -231,6 +235,11 @@ test('a failed service gives a spoken apology, not a crash', async () => {
 
 test('every server the code contacts is on the allow-list and in the privacy notes', () => {
   const used = new Set([...SOURCE.matchAll(/getJSON\(\s*[`'"]https:\/\/([a-z0-9.-]+)/g)].map(m => m[1]));
+  // Audio streams are a separate list (media-src): exactly the stream hosts named in skills.js.
+  const streams = JSON.parse(SOURCE.match(/STREAM_HOSTS = (\[[^\]]+\])/)[1].replace(/'/g, '"'));
+  const media = read('app/index.html').match(/media-src ([^;"]+)/)[1].split(/\s+/).map(x => x.replace('https://', ''));
+  assert.deepEqual([...media].sort(), [...streams].sort(), 'media-src must list exactly the stream hosts');
+  for (const host of streams) assert.ok(read('docs/PRIVACY.md').includes(host), `${host} is not documented in docs/PRIVACY.md`);
   assert.ok(used.size >= 7, 'expected to find the web services in skills.js');
   const csp = read('app/index.html').match(/connect-src ([^;"]+)/)[1];
   const siteConfig = read('site/vite.config.js'), privacy = read('docs/PRIVACY.md');
@@ -248,4 +257,120 @@ test('the installed app caches only files that exist', () => {
   const shell = read('app/sw.js').match(/const SHELL = \[([^\]]+)\]/)[1].match(/'[^']+'/g).map(s => s.slice(1, -1));
   for (const file of shell.filter(f => f !== './'))
     assert.ok(existsSync(new URL('../app/' + file, import.meta.url)), file + ' is listed in sw.js but missing');
+});
+
+/* ---------------- music ---------------- */
+
+function fakeMusic() {
+  const log = [];
+  return { log, music: {
+    station: null, volume: 0.6,
+    async play(id) { log.push(['play', id]); this.station = id; return true; },
+    pause() { log.push(['pause']); this.station = null; },
+    async resume() { log.push(['resume']); return true; },
+    setVolume(v) { this.volume = Math.max(0.05, Math.min(1, v)); },
+  } };
+}
+
+test('music plays inside Jarvis, and YouTube only when asked for', async () => {
+  const { Skills, opened } = boot();
+  const { log, music } = fakeMusic();
+  const ctx = { stopSpeaking() {}, setMuted() {}, announce() {}, music };
+  const ask = q => Skills.handle(q, ctx);
+  assert.match((await ask('play some music')).say, /^Playing Groove Salad/);
+  assert.match((await ask('play lo-fi')).say, /^Playing Fluid/);
+  assert.match((await ask('play jazz')).say, /^Playing Sonic Universe/);
+  assert.match((await ask('play coding music')).say, /^Playing DEF CON Radio/);
+  assert.deepEqual(log.map(l => l[1]), ['groovesalad', 'fluid', 'sonicuniverse', 'defcon']);
+  assert.equal(opened.length, 0, 'nothing opened in a new tab');
+  // A particular song: radio plays, and the reply says how to get the song on YouTube
+  assert.match((await ask('play bohemian rhapsody')).say, /can't play a particular song.*on YouTube/);
+  assert.match((await ask("what's playing")).say, /Sweet Apathy by Zero Cult/);
+  assert.match((await ask('next station')).say, /^Switching to/);
+  await ask('volume up');
+  assert.ok(music.volume > 0.6);
+  await ask('stop the music');
+  assert.equal(log.at(-1)[0], 'pause');
+  await ask('play lo-fi on youtube');
+  assert.equal(opened[0], 'https://www.youtube.com/results?search_query=lo-fi');
+});
+
+test('plain "stop" silences music as well as speech', async () => {
+  const { Skills } = boot();
+  const { log, music } = fakeMusic();
+  await Skills.handle('play music', { stopSpeaking() {}, setMuted() {}, music });
+  await Skills.handle('stop', { stopSpeaking() {}, setMuted() {}, music });
+  assert.equal(log.at(-1)[0], 'pause');
+});
+
+test('the landing-page demo, which has no player, explains instead of failing', async () => {
+  const { Skills } = boot();
+  const r = await Skills.handle('play some jazz', { demo: true, stopSpeaking() {}, setMuted() {} });
+  assert.match(r.say, /In the full app I would start Sonic Universe/);
+});
+
+/* ---------------- small talk and dates ---------------- */
+
+test('small talk is answered instantly, without the network', async () => {
+  const { ask, calls } = boot();
+  for (const q of ['how are you', 'who are you', 'what is your name', 'are you there', 'you are awesome', 'good night'])
+    assert.ok((await ask(q)).say.length > 5, q);
+  assert.equal(calls.length, 0);
+});
+
+test('days until a holiday or a date', async () => {
+  const { ask } = boot();
+  assert.match((await ask('how many days until christmas')).say, /^(\d+ days? until christmas|That's today)/);
+  assert.match((await ask('days until march 3rd')).say, /^(\d+ days? until march 3rd|That's today)/);
+  assert.match((await ask('how long until 1 january')).say, /^(\d+ days? until 1 january|That's today)/);
+});
+
+test('"tell me something interesting" reads a moment from history', async () => {
+  const { ask } = boot();
+  assert.equal((await ask('tell me something interesting')).say, 'On this day in 1969, apollo 11 lands on the Moon.');
+});
+
+/* ---------------- the brain ---------------- */
+
+test('open questions without an AI say how to get one, instead of a random article', async () => {
+  const { ask, calls } = boot();
+  assert.match((await ask('write me a poem about rain')).say, /needs a thinking brain.*Settings/);
+  assert.match((await ask('what should i eat for dinner')).say, /needs a thinking brain/);
+  assert.equal(calls.filter(c => c.includes('wikipedia')).length, 0, 'no pointless Wikipedia search');
+});
+
+test("Chrome's built-in AI answers when it is on, with Wikipedia facts in the prompt", async () => {
+  const prompts = [];
+  const LanguageModel = {
+    availability: async () => 'available',
+    create: async ({ initialPrompts }) => ({ prompt: async p => { prompts.push([initialPrompts[0].content, p]); return 'An AI answer.'; }, destroy() {} }),
+  };
+  const { Skills, Brain, ask, calls } = boot({}, { extra: { LanguageModel } });
+  assert.equal(Skills.brain(), 'Wikipedia finder');
+  assert.equal(await Brain.chromeStatus(), 'available');
+  assert.equal(Skills.brain(), 'Chrome AI, on device');
+  const fact = await ask('who is alan turing');
+  assert.equal(fact.say, 'An AI answer.');
+  assert.match(prompts[0][0], /^You are Jarvis/);
+  assert.match(prompts[0][1], /Facts that may help[\s\S]*English mathematician[\s\S]*Question: who is alan turing/);
+  assert.equal(fact.card.link.href, 'https://en.wikipedia.org/wiki/Alan_Turing', 'the answer cites its source');
+  const searches = calls.length;
+  assert.equal((await ask('write me a poem about rain')).say, 'An AI answer.');
+  assert.equal(prompts[1][1], 'write me a poem about rain', 'creative requests go straight to the model');
+  assert.equal(calls.length, searches, 'and need no web search');
+});
+
+test('without any AI, factual questions get the sentence that answers them', async () => {
+  const { Brain } = boot();
+  const pages = [
+    { title: 'Australian Capital Territory', url: 'u1', text: 'The Australian Capital Territory (ACT), known as the Federal Capital Territory until 1938, is an internal territory of Australia. Canberra, the capital city of Australia, is situated within the territory.' },
+    { title: 'Canberra', url: 'u2', text: 'Canberra is the capital city of Australia. Founded following the federation of the colonies of Australia, it is the largest inland city.' },
+  ];
+  assert.match(Brain.pick('what is the capital of australia', pages).say, /^Canberra/);
+  const moon = [{ title: 'Moon', url: 'm', text: "The Moon is Earth's only natural satellite. It orbits at an average distance of 384,400 km (238,900 mi), about 30 times the diameter of Earth." }];
+  assert.match(Brain.pick('how far is the moon', moon).say, /384,400 km/);
+  assert.equal(Brain.kind('how far is the moon'), 'fact');
+  for (const q of ['write me a poem', 'what should i eat for dinner', 'can you help me plan a trip', 'what do you think about cats'])
+    assert.equal(Brain.kind(q), 'open', q);
+  assert.equal(JSON.stringify(Brain.sentences('It is 3.5 km long. St. Louis is a city. Done.')), JSON.stringify(['It is 3.5 km long.', 'St. Louis is a city.', 'Done.']));   // JSON: arrays from the sandbox are another realm
 });

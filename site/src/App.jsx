@@ -23,13 +23,13 @@ const REEL = [
   ['Jarvis, what is 18 times 24', "That's 432."],
   ['Jarvis, set a timer for ten minutes', 'Timer set for 10 minutes.'],
 ];
-const TRY = ['Weather in Mumbai', 'Who is Alan Turing', 'Convert 100 dollars to rupees', 'Translate good morning to Spanish', 'How many grams in a pound', 'Tech news'];
+const TRY = ['How far is the moon', 'Why is the sky blue', 'Weather in Mumbai', 'Convert 100 dollars to rupees', 'Translate good morning to Spanish', 'Days until Christmas'];
 
 const CAPABILITIES = [
   ['Wakes to its name', 'Say "Jarvis", or any wake word you choose, and it listens. It understands the usual mis-hearings, answers out loud, and stays attentive for follow-ups.'],
   ['Live answers from the web', 'Weather anywhere, Wikipedia knowledge, tech headlines, currency rates, translations into 20 languages and dictionary definitions.'],
-  ['Runs your day', 'A spoken morning briefing, reminders that survive a restart, timers with a live countdown, notes, unit conversion and maths.'],
-  ['A brain that stays home', 'Run a free local model with Ollama and open questions are answered on your own hardware. Nothing is sent to a cloud AI.'],
+  ['Runs your day', 'A morning briefing, reminders that survive a restart, timers, notes, conversions, and free radio that plays right inside it.'],
+  ['A brain that stays home', 'Turn on Chrome’s built-in AI, or run Ollama, and it writes, plans and reasons on your own computer. No cloud AI, no bill. Without either, it finds the answer on Wikipedia.'],
   ['Installs like an app', 'One click in Chrome or Edge puts it in its own window with its own icon. The interface loads offline.'],
   ['Yours to rewire', 'Change the name, voice and wake word in Settings. Go further in the code: every skill is one line, with no framework and no build step.'],
 ];
@@ -42,11 +42,15 @@ const CONNECTIONS = [
   ['Frankfurter', 'You convert currency', 'The two currency codes'],
   ['MyMemory', 'You ask for a translation', 'The phrase to translate'],
   ['icanhazdadjoke', 'You ask for a joke', 'Nothing about you'],
+  ['SomaFM radio', 'You ask for music', 'Nothing about you'],
   ['Ollama on localhost', 'Optional local AI brain', 'Your question, to your own computer only'],
 ];
 
-// Lit word by word as it scrolls past. Words wrapped in * are highlighted.
-const MANIFESTO = 'No server to trust. No account to make. No bill, ever. Jarvis lives in *your* *browser,* listens on *your* *device* and answers to *you* *alone.*';
+// Lit word by word as it scrolls past: two stanzas, one line per array entry. Words wrapped in * are highlighted.
+const MANIFESTO = [
+  ['No server to trust.', 'No account to make.', 'No bill, ever.'],
+  ['Jarvis lives in *your* *browser,*', 'listens on *your* *device*', 'and answers to *you* *alone.*'],
+];
 
 const STEPS = [
   ['Get the code', 'git clone https://github.com/yugmakkar/jarvis.git', 'Or download the ZIP from GitHub. You need Python 3, which is free, for the tiny local server.'],
@@ -135,7 +139,7 @@ function useConsole(stateRef) {
     const id = ++turn.current;
     push('you', text);
     setState('thinking');
-    const ctx = { stopSpeaking() {}, setMuted() {}, announce: say => push('ai', say) };
+    const ctx = { demo: true, stopSpeaking() {}, setMuted() {}, announce: say => push('ai', say) };   // no music player in the demo
     const reply = await Skills.handle(text, ctx);
     if (id !== turn.current) return;
     push('ai', reply.say || 'Done.');
@@ -240,17 +244,25 @@ export default function App() {
             <ReactorCanvas stateRef={stateRef} className="reactor" label="The Jarvis reactor core, animating as it listens, thinks and speaks" />
           </div>
           <dl className="strip">
-            <div><dt><CountUp to={20} duration={1.4} /></dt><dd>built-in skills</dd></div>
-            <div><dt><CountUp to={7} duration={1.4} /></dt><dd>free data sources</dd></div>
+            <div><dt><CountUp to={30} duration={1.4} /></dt><dd>built-in skills</dd></div>
+            <div><dt><CountUp to={8} duration={1.4} /></dt><dd>free data sources</dd></div>
             <div><dt>0</dt><dd>trackers or cookies</dd></div>
             <div><dt>0</dt><dd>cost to you</dd></div>
           </dl>
         </section>
 
         <section className="section manifesto-wrap" aria-label="In short">
-          <p className="manifesto">
-            {MANIFESTO.split(' ').map((w, i) => <span key={i} className={w.startsWith('*') ? 'w hl' : 'w'}>{w.replaceAll('*', '')} </span>)}
-          </p>
+          <div className="manifesto">
+            {MANIFESTO.map((stanza, s) => (
+              <p key={s}>
+                {stanza.map((line, l) => (
+                  <span key={l} className="m-line">
+                    {line.split(' ').map((w, i) => <span key={i} className={w.startsWith('*') ? 'w hl' : 'w'}>{w.replaceAll('*', '')} </span>)}
+                  </span>
+                ))}
+              </p>
+            ))}
+          </div>
         </section>
 
         <Demo stateRef={stateRef} />

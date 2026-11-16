@@ -167,6 +167,9 @@ td:first-child { color: var(--fg); font-weight: 400; white-space: nowrap; }
 
 .manifesto-wrap { padding-top: clamp(96px, 14vw, 180px); }
 .manifesto { max-width: 1040px; font-weight: 500; font-size: clamp(28px, 4.4vw, 60px); line-height: 1.12; letter-spacing: -.035em; color: #c9d6de; }
+.manifesto p + p { margin-top: .9em; }   /* a pause between the two stanzas */
+.manifesto .m-line { display: block; }
+.manifesto p:first-child { color: var(--fg); }
 .manifesto .w { opacity: .14; }
 .manifesto .hl { color: var(--accent); }
 

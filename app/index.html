@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S.</title>
 <!-- The browser enforces this list: the app cannot contact any server that is not named here. See docs/PRIVACY.md -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://en.wikipedia.org https://hacker-news.firebaseio.com https://api.dictionaryapi.dev https://icanhazdadjoke.com https://api.frankfurter.dev https://api.mymemory.translated.net http://localhost:11434; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://somafm.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://en.wikipedia.org https://hacker-news.firebaseio.com https://api.dictionaryapi.dev https://icanhazdadjoke.com https://api.frankfurter.dev https://api.mymemory.translated.net http://localhost:11434; media-src https://ice2.somafm.com https://ice4.somafm.com https://ice6.somafm.com https://ice1.somafm.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#03070d">
 <link rel="manifest" href="manifest.webmanifest">
@@ -71,6 +71,7 @@
       <option value="only">On this device only (voice off if unavailable)</option>
       <option value="cloud">Browser's online service</option>
     </select></label>
+    <div class="ai"><span>Built-in AI</span><p id="aiStatus" class="hint">Checking&hellip;</p><button id="aiBtn" type="button" hidden></button></div>
     <label class="check"><input id="setSpeech" type="checkbox"> Speak replies aloud</label>
     <p class="hint">Saved only in this browser, on this device. Nothing here is sent anywhere.</p>
     <div class="buttons">
@@ -82,6 +83,7 @@
 </dialog>
 
 <script src="reactor.js"></script>
+<script src="brain.js"></script>
 <script src="skills.js"></script>
 <script src="hearing.js"></script>
 <script src="jarvis.js"></script>
