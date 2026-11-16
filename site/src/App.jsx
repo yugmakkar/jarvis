@@ -22,15 +22,15 @@ const REEL = [
   ['Jarvis, what is 18 times 24', "That's 432."],
   ['Jarvis, set a timer for ten minutes', 'Timer set for 10 minutes.'],
 ];
-const TRY = ['Weather in Mumbai', 'Who is Alan Turing', 'Tech news', 'Define serendipity', 'What is 18 times 24', 'Tell me a joke'];
+const TRY = ['Weather in Mumbai', 'Who is Alan Turing', 'Convert 100 dollars to rupees', 'Translate good morning to Spanish', 'How many grams in a pound', 'Tech news'];
 
 const CAPABILITIES = [
-  ['Wakes to its name', 'Say "Jarvis" and it listens. It answers out loud, then stays attentive for a few seconds so follow-ups feel like conversation.'],
-  ['Live answers from the web', 'Weather anywhere, Wikipedia knowledge, tech headlines and dictionary definitions, fetched the moment you ask.'],
-  ['Gets small things done', 'Timers, notes, maths, the time, opening sites and searches. The everyday errands you would rather say than type.'],
+  ['Wakes to its name', 'Say "Jarvis", or any wake word you choose, and it listens. It understands the usual mis-hearings, answers out loud, and stays attentive for follow-ups.'],
+  ['Live answers from the web', 'Weather anywhere, Wikipedia knowledge, tech headlines, currency rates, translations into 20 languages and dictionary definitions.'],
+  ['Runs your day', 'A spoken morning briefing, reminders that survive a restart, timers with a live countdown, notes, unit conversion and maths.'],
   ['A brain that stays home', 'Run a free local model with Ollama and open questions are answered on your own hardware. Nothing is sent to a cloud AI.'],
   ['Installs like an app', 'One click in Chrome or Edge puts it in its own window with its own icon. The interface loads offline.'],
-  ['Yours to rewire', 'Every skill is one line: a pattern and a function. No framework, no build step, about 650 lines of JavaScript you can read in a sitting.'],
+  ['Yours to rewire', 'Change the name, voice and wake word in Settings. Go further in the code: every skill is one line, with no framework and no build step.'],
 ];
 
 const CONNECTIONS = [
@@ -38,6 +38,8 @@ const CONNECTIONS = [
   ['Wikipedia', 'You ask who or what something is', 'Your search words'],
   ['Hacker News', 'You ask for headlines', 'Nothing about you'],
   ['Free Dictionary API', 'You ask for a definition', 'The word'],
+  ['Frankfurter', 'You convert currency', 'The two currency codes'],
+  ['MyMemory', 'You ask for a translation', 'The phrase to translate'],
   ['icanhazdadjoke', 'You ask for a joke', 'Nothing about you'],
   ['Ollama on localhost', 'Optional local AI brain', 'Your question, to your own computer only'],
 ];
@@ -127,6 +129,7 @@ function useConsole() {
     const reply = await Skills.handle(text, ctx);
     if (id !== turn.current) return;
     push('ai', reply.say || 'Done.');
+    if (reply.also) push('ai', reply.also.text);   // translations: the phrase in the other language
     if (reply.card && reply.card.rows) push('data', reply.card.rows.map(r => r.join(' ')).join('  ·  '));
     setState('speaking');
     await sleep(Math.min(3500, 900 + (reply.say || '').length * 18));
@@ -209,8 +212,8 @@ export default function App() {
             <ReactorCanvas stateRef={con.stateRef} className="reactor" label="The Jarvis reactor core, animating as it listens, thinks and speaks" />
           </div>
           <dl className="strip">
-            <div><dt><CountUp to={12} duration={1.4} /></dt><dd>built-in skills</dd></div>
-            <div><dt><CountUp to={5} duration={1.4} /></dt><dd>free data sources</dd></div>
+            <div><dt><CountUp to={20} duration={1.4} /></dt><dd>built-in skills</dd></div>
+            <div><dt><CountUp to={7} duration={1.4} /></dt><dd>free data sources</dd></div>
             <div><dt>0</dt><dd>trackers or cookies</dd></div>
             <div><dt>0</dt><dd>cost, for you or your users</dd></div>
           </dl>
@@ -247,7 +250,7 @@ export default function App() {
             <p className="label">03 / Privacy</p>
             <h2>Private by construction, <span className="serif">not by promise.</span></h2>
             <p>There is no Jarvis server, so there is nowhere for your data to go. Notes, your name and your settings stay in your browser&rsquo;s storage on your device.</p>
-            <p>The app ships with a browser-enforced allow-list. It can only contact the services in this table, and only when you ask for that thing.</p>
+            <p>The app ships with a browser-enforced allow-list. It can only contact the services in this table, and only when you ask for that thing. Ask &ldquo;what do you know about me&rdquo; to see everything it has saved, and erase it all from Settings.</p>
             <p className="fine">One honest caveat: in Chrome and Edge, turning speech into text is done by the browser maker&rsquo;s speech service, not by Jarvis. Mute the mic and type if you prefer; typed commands involve no speech service at all.</p>
             <a className="textlink" href={`${REPO}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noopener noreferrer">Read the full privacy notes <Arrow /></a>
           </div>

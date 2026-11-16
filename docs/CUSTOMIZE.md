@@ -35,19 +35,13 @@ In `app/index.html`, add `https://catfact.ninja` to `connect-src` inside the Con
 
 ## Change the wake word
 
-In `app/jarvis.js`, edit `extractWakeCommand`. It receives each sentence the microphone hears and returns:
+No code needed: open **SETTINGS** in the app and type a new wake word.
 
-- `null` if the sentence was not meant for the assistant
-- `''` if it was only the wake word
-- the command text, if a command followed the wake word
-
-Speech recognisers often mishear names ("Travis", "service"), so accepting a few close spellings makes the assistant more responsive, at the price of occasionally waking when it should not. Also update the matching pattern at the top of `handle` in `app/skills.js`, which strips the wake word from typed commands.
+The default, "jarvis", also accepts what speech recognisers commonly hear instead ("Travis", "Jervis", "jar vis"). That list is `HEARD_AS` in `app/skills.js`. A longer list makes the assistant more responsive, at the price of occasionally waking when it should not. A custom wake word is matched exactly, so pick one that is easy to recognise.
 
 ## Change the voice and personality
 
-- **Voice:** `pickVoice` in `app/jarvis.js` holds a list of preferred voice names, tried in order. Run `speechSynthesis.getVoices()` in the browser console to see what your system offers.
-- **Speed and pitch:** `u.rate` and `u.pitch` in `speak`.
-- **How he addresses you:** say "call me Tony", or change the default in `sir()` in `app/skills.js`.
+- **Voice, speed and what he calls you:** all in **SETTINGS**. The defaults live in `pickVoice` and `speak` in `app/jarvis.js`, and `sir()` in `app/skills.js`.
 - **Local AI persona:** the `PERSONA` text in `app/skills.js` is the system prompt sent to the local model.
 - **Follow-up window:** `FOLLOW_UP_MS` at the top of `app/jarvis.js`.
 
@@ -65,6 +59,14 @@ Speech recognisers often mishear names ("Travis", "service"), so accepting a few
 4. Replace `yugmakkar/jarvis` in `site/src/App.jsx`, `README.md` and the docs with your own repository name.
 
 GitHub Pages is free for public repositories.
+
+## Test your changes
+
+```bash
+node --test tests/
+```
+
+Add a case to `tests/skills.test.mjs` for each skill you write. If your skill calls a new web service, add a canned reply for it to `FAKE` at the top of that file. The privacy test will remind you if you forget the allow-list or the privacy notes.
 
 ## After changing files in the installed app
 

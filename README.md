@@ -6,25 +6,36 @@ A free, open-source voice assistant that wakes to its name, answers out loud and
 
 - **Free for everyone.** No account, no API key, no subscription. Every data source is a free public API.
 - **Private.** There is no Jarvis server. Your notes and settings stay in your browser. See [docs/PRIVACY.md](docs/PRIVACY.md).
-- **Small.** The assistant is about 650 lines of plain JavaScript with no framework and no build step.
+- **Small.** The assistant is under 900 lines of plain JavaScript with no framework and no build step.
+- **Tested.** An automated test suite runs before every deployment.
 - **Yours.** Fork it, rename it, add skills. See [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md).
 
 ## What it can do
 
 | Say or type | What happens |
 |---|---|
+| "Good morning" / "Brief me" | A spoken briefing: time, weather, top headlines, your reminders |
 | "Jarvis, weather in Mumbai" | Current conditions and today's high and low |
 | "Who is Alan Turing" / "What is a black hole" | A short spoken answer from Wikipedia |
 | "Tech news" | The top stories on Hacker News |
 | "Define serendipity" | A dictionary definition |
 | "What is 18 times 24" | Arithmetic |
-| "Set a timer for 10 minutes" | A timer that announces itself when done |
+| "Set a timer for 10 minutes" | A timer with a live countdown that announces itself when done |
+| "Remind me at 5 pm to call home" / "Remind me in 20 minutes to stretch" | A reminder that survives closing and reopening the app |
+| "Convert 100 dollars to rupees" | Live exchange rates |
+| "How many grams in a pound" / "5 miles to km" / "100 celsius to fahrenheit" | Unit conversion, done on your device |
+| "Translate good morning to Spanish" | Translation into 20 languages, spoken in that language |
 | "Remember to call mom" / "What are my notes" | Notes saved on your device |
 | "Open YouTube" / "Search for pasta recipes" / "Play lo-fi" | Opens the site, a Google search or a YouTube search |
 | "What time is it" / "System status" / "Tell me a joke" | What you would expect |
-| "Go to sleep" | Mutes the microphone until you click the core |
+| "What do you know about me" | Shows everything saved on your device |
+| "Cancel all reminders" / "Go to sleep" | Clears the schedule / mutes the microphone until you click the core |
 
-After Jarvis answers, he keeps listening for about 8 seconds, so follow-up commands do not need the wake word. Click the core to interrupt him or to mute and unmute the microphone.
+After Jarvis answers, he keeps listening for about 8 seconds, so follow-up commands do not need the wake word. Click the core to interrupt him or to mute and unmute the microphone. Tap **Space** to talk without saying the wake word, and press the up arrow in the command box to recall earlier commands.
+
+### Settings
+
+Click **SETTINGS** in the top bar to change what Jarvis calls you, your home city, the wake word, the voice and its speed, or to turn spoken replies off. **Erase all my data** removes everything Jarvis has saved on the device. No code needed.
 
 ## Run it on your computer
 
@@ -85,6 +96,7 @@ app/        The assistant. Plain HTML, CSS and JavaScript. This is all you need 
   reactor.js  The animated core
   sw.js       Offline cache for the installed app
 site/       The landing page (React + Vite). Only needed if you want to change the website.
+tests/      Automated tests for the skills and the privacy allow-list
 docs/       Privacy notes and the customisation guide
 ```
 
@@ -96,10 +108,18 @@ npm install
 npm run dev
 ```
 
-Pushing to `main` rebuilds and publishes the site through the workflow in `.github/workflows/pages.yml`.
+## Tests
+
+```bash
+node --test tests/
+```
+
+The tests need only Node.js 20 or newer, with nothing to install. They load the skills into a sandbox with a fake network, so they are fast and never contact a real service. One test fails if the code talks to a server that is missing from the allow-list or from the privacy notes.
+
+Pushing to `main` runs the tests, and only if they pass rebuilds and publishes the site through the workflow in `.github/workflows/pages.yml`.
 
 ## Credits and licence
 
-MIT licensed, see [LICENSE](LICENSE). Data from [Open-Meteo](https://open-meteo.com), [Wikipedia](https://www.wikipedia.org), [Hacker News](https://news.ycombinator.com), the [Free Dictionary API](https://dictionaryapi.dev) and [icanhazdadjoke](https://icanhazdadjoke.com). The landing page uses components from [React Bits](https://reactbits.dev), which carry their own licence (see `site/src/reactbits/README.md`).
+MIT licensed, see [LICENSE](LICENSE). Data from [Open-Meteo](https://open-meteo.com), [Wikipedia](https://www.wikipedia.org), [Hacker News](https://news.ycombinator.com), the [Free Dictionary API](https://dictionaryapi.dev), [Frankfurter](https://frankfurter.dev), [MyMemory](https://mymemory.translated.net) and [icanhazdadjoke](https://icanhazdadjoke.com). The landing page uses components from [React Bits](https://reactbits.dev), which carry their own licence (see `site/src/reactbits/README.md`).
 
 This is a fan-made project and is not affiliated with Marvel or Disney.

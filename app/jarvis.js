@@ -12,18 +12,6 @@
   let turn = 0;                       // increments per command; stale async replies check it and bail out
   let analyser = null, audioCtx = null, voice = null;
 
-  /* ---------------- wake word ---------------- */
-
-  // Decides whether a heard sentence is addressed to Jarvis.
-  // Returns null  -> not for us, ignore it
-  //         ''    -> just the wake word ("Jarvis"), so start listening for a command
-  //         'xyz' -> the command that followed the wake word
-  // TODO(human): make this robust to how the recogniser actually mishears "Jarvis".
-  function extractWakeCommand(transcript) {
-    const m = transcript.toLowerCase().match(/\bjarvis\b[,.!?]?\s*(.*)$/);
-    return m ? m[1].trim() : null;
-  }
-
   /* ---------------- state + UI ---------------- */
 
   function setState(s) {
@@ -55,6 +43,7 @@
     const add = (tag, text, cls) => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; el.append(n); return n; };
     add('h3', c.title);
     if (c.big) add('div', c.big, 'big');
+    if (c.until) countdown(add('div', '', 'big'), c.until);
     if (c.text) add('p', c.text);
     if (c.rows) { const dl = add('dl', ''); for (const [k, v] of c.rows) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; dl.append(dt, dd); } }
     if (c.list) { const ol = add('ol', ''); for (const item of c.list) { const li = document.createElement('li'); li.textContent = item; ol.append(li); } }
@@ -62,10 +51,23 @@
     $('cards').replaceChildren(el);
   }
 
+  function countdown(node, until) {   // live m:ss display; stops when time is up or the card is replaced
+    const paint = () => {
+      const left = Math.max(0, Math.round((until - Date.now()) / 1000)), pad = n => String(n).padStart(2, '0');
+      node.textContent = left >= 3600 ? `${Math.floor(left / 3600)}:${pad(Math.floor(left % 3600 / 60))}:${pad(left % 60)}` : `${Math.floor(left / 60)}:${pad(left % 60)}`;
+      return left;
+    };
+    paint();
+    const timer = setInterval(() => { if (!paint() || !node.isConnected) clearInterval(timer); }, 500);
+  }
+
   /* ---------------- speaking ---------------- */
 
   function pickVoice() {
+    if (!window.speechSynthesis) return;
     const all = speechSynthesis.getVoices();
+    voice = all.find(v => v.name === Skills.settings.get('voice')) || null;   // the user's choice in Settings wins
+    if (voice) return;
     const wanted = [/Google UK English Male/, /Microsoft (Ryan|George|Thomas)/, /en-GB/, /^en/];
     for (const w of wanted) { const v = all.find(v => w.test(v.name) || w.test(v.lang)); if (v) { voice = v; return; } }
   }
@@ -78,14 +80,15 @@
     o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + 0.2);
   }
 
-  function speak(text) {
+  function speak(text, lang) {   // lang is set only for translations, so they are pronounced by a matching voice
     $('caption').textContent = text;
-    if (!text || !window.speechSynthesis) return Promise.resolve();
+    if (!text || !window.speechSynthesis || !Skills.settings.get('speech', true)) return Promise.resolve();
     return new Promise(resolve => {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      if (voice) u.voice = voice;
-      u.rate = 1.05; u.pitch = 0.9;
+      if (lang) { u.lang = lang; const match = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())); if (match) u.voice = match; }
+      else if (voice) u.voice = voice;
+      u.rate = Number(Skills.settings.get('rate', 1.05)) || 1.05; u.pitch = 0.9;
       let finished = false;
       const done = () => { if (finished) return; finished = true; clearTimeout(guard); deafUntil = Date.now() + 400; resolve(); };
       const guard = setTimeout(done, 25000);   // some browsers never fire onend
@@ -118,13 +121,14 @@
     if (id !== turn) return;            // a newer command arrived while we were fetching
     if (reply.card) showCard(reply.card);
     if (reply.say) { log('ai', reply.say); await speak(reply.say); }
+    if (reply.also && id === turn) { log('ai', reply.also.text); await speak(reply.also.text, reply.also.lang); }
     if (id !== turn) return;
     if (reply.sleep) { armedUntil = 0; idle(); } else arm();
   }
 
   function onHeard(text) {
     if (!text) return;
-    const wake = extractWakeCommand(text);
+    const wake = Skills.wake(text);
     const armed = Date.now() < armedUntil;
     if (wake === null && !armed) { $('heard').textContent = text; return; }   // background chatter
     const command = wake === null ? text : wake;
@@ -195,7 +199,7 @@
     $('date').textContent = now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
   }
   async function refreshSystems() {
-    const rows = [['Voice input', !SR ? 'unsupported' : micBlocked ? 'blocked' : muted ? 'muted' : 'active'],
+    const rows = [['Wake word', Skills.settings.get('wake', 'jarvis')], ['Voice input', !SR ? 'unsupported' : micBlocked ? 'blocked' : muted ? 'muted' : 'active'],
       ['Voice output', window.speechSynthesis ? (voice ? voice.name.replace(/Microsoft |Google /, '').slice(0, 18) : 'default') : 'none'],
       ['Brain', Skills.brain()],
       ...await Skills.systemRows()];
@@ -219,7 +223,59 @@
     e.preventDefault();
     const text = $('cmdInput').value.trim();
     $('cmdInput').value = '';
-    if (text) run(text);
+    if (text) { past.push(text); cursor = past.length; run(text); }
+  });
+  // Arrow up / down recalls earlier commands, like a terminal.
+  const past = []; let cursor = 0;
+  $('cmdInput').addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' && cursor > 0) { e.preventDefault(); $('cmdInput').value = past[--cursor]; }
+    else if (e.key === 'ArrowDown') { cursor = Math.min(past.length, cursor + 1); $('cmdInput').value = past[cursor] || ''; }
+  });
+
+  // Push-to-talk: tap Space (when not typing) and speak a command without the wake word.
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat || state === 'offline' || $('settings').open || /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)) return;
+    e.preventDefault();
+    if (state === 'speaking') { turn++; ctx.stopSpeaking(); }
+    if (muted) setMuted(false);
+    chirp(); $('caption').textContent = 'Listening…'; arm();
+  });
+
+  /* ---------------- settings (everything is saved in this browser only) ---------------- */
+
+  function openSettings() {
+    const s = Skills.settings;
+    $('setName').value = s.get('name', '');
+    $('setCity').value = s.get('city', '');
+    $('setWake').value = s.get('wake', 'jarvis');
+    $('setRate').value = s.get('rate', 1.05);
+    $('setSpeech').checked = s.get('speech', true);
+    const voices = window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
+    $('setVoice').replaceChildren(new Option('Automatic', ''), ...voices.map(v => new Option(`${v.name} (${v.lang})`, v.name)));
+    $('setVoice').value = s.get('voice', '');
+    $('settings').showModal();
+  }
+  $('settingsBtn').addEventListener('click', openSettings);
+  $('cancelBtn').addEventListener('click', () => $('settings').close());
+  $('settingsForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const s = Skills.settings, text = id => $(id).value.trim();
+    s.set('name', text('setName') || null);   // null = "not set", so the default applies again
+    s.set('city', text('setCity') || null);
+    s.set('wake', text('setWake').toLowerCase() || null);
+    s.set('voice', $('setVoice').value || null);
+    s.set('rate', Number($('setRate').value));
+    s.set('speech', $('setSpeech').checked);
+    pickVoice(); refreshSystems();
+    $('settings').close();
+    ctx.announce(`Settings saved. I answer to ${s.get('wake', 'jarvis')}.`);
+  });
+  $('eraseBtn').addEventListener('click', () => {
+    if (!confirm('Erase everything Jarvis has saved on this device (name, city, notes, reminders, settings)? This cannot be undone.')) return;
+    Skills.settings.erase();
+    pickVoice(); refreshSystems();
+    $('settings').close();
+    ctx.announce('All stored data has been erased.');
   });
   $('micBtn').addEventListener('click', () => setMuted(!muted));
   canvas.addEventListener('click', () => {
@@ -241,10 +297,11 @@
     refreshSystems();
     const h = new Date().getHours();
     const hello = `Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}. All systems online.` +
-      (SR && !micBlocked ? ' Say Jarvis, followed by a command.' : ' Voice input is unavailable, so type your commands.');
+      (SR && !micBlocked ? ` Say ${Skills.settings.get('wake', 'jarvis')}, followed by a command.` : ' Voice input is unavailable, so type your commands.');
     const id = ++turn;
     log('ai', hello);
     await speak(hello);
     if (id === turn) idle();
+    Skills.attach(ctx);   // start the reminder clock; anything that came due while Jarvis was closed is announced now
   }, { once: true });
 })();

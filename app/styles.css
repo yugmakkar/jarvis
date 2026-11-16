@@ -42,7 +42,27 @@ body {
 .brand { font: 600 18px var(--mono); letter-spacing: .35em; color: var(--accent); text-shadow: 0 0 14px var(--glow); }
 .brand span, .brand a { font-size: 11px; color: var(--dim); letter-spacing: .2em; }
 .brand a { margin-left: 14px; text-decoration: none; border-bottom: 1px solid var(--line); text-shadow: none; }
-.brand a:hover { color: var(--accent); }
+.brand a:hover, .brand button:hover { color: var(--accent); }
+.brand button { margin-left: 14px; padding: 0; background: none; border: 0; border-bottom: 1px solid var(--line); font: 11px var(--mono); letter-spacing: .2em; color: var(--dim); cursor: pointer; }
+
+/* ---------- settings dialog ---------- */
+dialog {
+  margin: auto; width: min(440px, calc(100% - 32px)); padding: 26px; color: var(--ink);
+  background: linear-gradient(160deg, #0c2030, #060e18); border: 1px solid var(--accent);
+  box-shadow: 0 0 60px var(--glow);
+}
+dialog::backdrop { background: rgba(2, 5, 10, .78); backdrop-filter: blur(4px); }
+dialog h2 { font: 600 12px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--accent); margin-bottom: 18px; }
+dialog label { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 13px; color: var(--dim); }
+dialog label.check { display: flex; gap: 10px; color: var(--ink); }
+dialog input[type="text"], dialog select { height: 36px; padding: 0 10px; font: 13px var(--mono); color: var(--ink); background: rgba(8, 22, 34, .85); border: 1px solid var(--line); outline: none; min-width: 0; }
+dialog input:focus-visible, dialog select:focus-visible, dialog button:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); outline: none; }
+dialog input[type="range"], dialog input[type="checkbox"] { accent-color: #4fd8ff; }
+dialog .hint { margin: 16px 0; font-size: 12px; color: var(--dim); }
+dialog .buttons { display: flex; gap: 8px; }
+dialog .buttons button { height: 36px; padding: 0 14px; font: 12px var(--mono); letter-spacing: .08em; color: var(--ink); background: transparent; border: 1px solid var(--line); cursor: pointer; }
+dialog .buttons .danger { margin-right: auto; color: #ff8a8a; border-color: rgba(255, 107, 107, .4); }
+dialog .buttons .primary { color: #02050a; background: #4fd8ff; border-color: #4fd8ff; }
 .pill {
   font: 600 11px var(--mono); letter-spacing: .3em; padding: 5px 16px;
   color: var(--accent); border: 1px solid var(--accent); border-radius: 99px;

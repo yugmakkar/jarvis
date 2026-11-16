@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S.</title>
 <!-- The browser enforces this list: the app cannot contact any server that is not named here. See docs/PRIVACY.md -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://en.wikipedia.org https://hacker-news.firebaseio.com https://api.dictionaryapi.dev https://icanhazdadjoke.com http://localhost:11434; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://en.wikipedia.org https://hacker-news.firebaseio.com https://api.dictionaryapi.dev https://icanhazdadjoke.com https://api.frankfurter.dev https://api.mymemory.translated.net http://localhost:11434; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#03070d">
 <link rel="manifest" href="manifest.webmanifest">
@@ -25,7 +25,7 @@
 
 <main class="hud">
   <header class="top">
-    <div class="brand">J.A.R.V.I.S. <span>MK I</span> <a href="../" title="About this project">ABOUT</a></div>
+    <div class="brand">J.A.R.V.I.S. <span>MK I</span> <a href="../" title="About this project">ABOUT</a> <button id="settingsBtn" type="button">SETTINGS</button></div>
     <div id="statePill" class="pill">OFFLINE</div>
     <div class="clock"><span id="clock">--:--:--</span><small id="date"></small></div>
   </header>
@@ -53,10 +53,28 @@
   <footer class="bar">
     <button id="micBtn" type="button" class="mic" title="Mute / unmute microphone" aria-pressed="false">MIC</button>
     <form id="cmdForm" autocomplete="off">
-      <input id="cmdInput" type="text" placeholder="Say &quot;Jarvis, ...&quot; or type a command and press Enter" aria-label="Command">
+      <input id="cmdInput" type="text" placeholder="Say the wake word, tap Space to talk, or type a command and press Enter" aria-label="Command">
     </form>
   </footer>
 </main>
+
+<dialog id="settings" aria-labelledby="settingsTitle">
+  <form id="settingsForm" autocomplete="off">
+    <h2 id="settingsTitle">Settings</h2>
+    <label>Call me <input id="setName" type="text" placeholder="sir" maxlength="40"></label>
+    <label>Home city <input id="setCity" type="text" placeholder="Used for weather and briefings" maxlength="60"></label>
+    <label>Wake word <input id="setWake" type="text" placeholder="jarvis" maxlength="30"></label>
+    <label>Voice <select id="setVoice"></select></label>
+    <label>Speaking speed <input id="setRate" type="range" min="0.7" max="1.5" step="0.05"></label>
+    <label class="check"><input id="setSpeech" type="checkbox"> Speak replies aloud</label>
+    <p class="hint">Saved only in this browser, on this device. Nothing here is sent anywhere.</p>
+    <div class="buttons">
+      <button id="eraseBtn" type="button" class="danger">Erase all my data</button>
+      <button id="cancelBtn" type="button">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="reactor.js"></script>
 <script src="skills.js"></script>

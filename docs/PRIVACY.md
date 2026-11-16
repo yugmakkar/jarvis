@@ -6,11 +6,11 @@ This page lists everything that does leave your device, so you can judge for you
 
 ## What stays on your device
 
-- Your notes, the name you ask Jarvis to call you, your home city and your chosen AI model. These are kept in your browser's `localStorage` for the page.
+- Your notes, reminders and timers, the name you ask Jarvis to call you, your home city, and your settings (wake word, voice, speed, AI model). These are kept in your browser's `localStorage` for the page.
 - The conversation log on screen. It is held in memory and disappears when you close the tab.
 - Conversation history with a local AI model. Also memory only.
 
-To erase everything, clear site data for the page in your browser settings, or say "clear notes" for notes alone.
+To see everything that is stored, ask "what do you know about me". To erase it all, open **Settings** and choose **Erase all my data**. Say "clear notes" or "cancel all reminders" to remove just those.
 
 ## What leaves your device, and when
 
@@ -22,16 +22,24 @@ Jarvis contacts a service only when you ask for the thing that service provides.
 | Wikipedia (`en.wikipedia.org`) | You ask who or what something is | Your search words |
 | Hacker News (`hacker-news.firebaseio.com`) | You ask for news | Nothing about you |
 | Free Dictionary API (`api.dictionaryapi.dev`) | You ask for a definition | The word |
+| Frankfurter (`api.frankfurter.dev`) | You convert currency | The two currency codes, not the amount |
+| MyMemory (`api.mymemory.translated.net`) | You ask for a translation | The phrase you want translated |
 | icanhazdadjoke (`icanhazdadjoke.com`) | You ask for a joke | Nothing about you |
 | Ollama (`localhost:11434`) | You have a local AI model running | Your question, to your own computer only |
 
 As with any web request, each service sees your IP address. No API keys, user IDs or cookies are sent, and the page sends no referrer.
+
+Unit conversion, maths, timers, reminders and notes are handled entirely on your device and contact nothing.
+
+If you allow notifications, reminders also appear as system notifications. These are created by your own browser and involve no push service.
 
 When you say "open ...", "search for ..." or "play ...", Jarvis opens that site in a new tab. From then on you are on that site, under its own privacy policy.
 
 ## How this is enforced
 
 The app page carries a Content-Security-Policy that names the hosts above. The browser refuses any connection to a host that is not on the list, and refuses to run any script that is not one of the project's own files. A bug or a malicious change would have to edit that list in `app/index.html` to send data anywhere else, and that edit would be plain to see in the source.
+
+An automated test in `tests/` fails the build if the code contacts a host that is missing from the allow-list or from this page.
 
 You can verify this yourself: open the browser's developer tools, go to the Network tab, and use Jarvis. You will see requests to the hosts in the table and nothing else.
 
