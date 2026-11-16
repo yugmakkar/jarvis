@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<!-- The browser enforces this list: the app cannot contact any server that is not named here. See docs/PRIVACY.md -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://en.wikipedia.org https://hacker-news.firebaseio.com https://api.dictionaryapi.dev https://icanhazdadjoke.com http://localhost:11434; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#03070d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-state="offline">
+
+<!-- Boot overlay: browsers need one click before they allow mic + speech -->
+<div id="boot">
+  <div class="boot-ring"></div>
+  <h1>J.A.R.V.I.S.</h1>
+  <p class="boot-sub">Just A Rather Very Intelligent System</p>
+  <button id="initBtn" type="button">INITIALIZE</button>
+  <p id="bootNote" class="boot-note">Use Chrome or Edge. You will be asked for microphone access.</p>
+</div>
+
+<main class="hud">
+  <header class="top">
+    <div class="brand">J.A.R.V.I.S. <span>MK I</span> <a href="../" title="About this project">ABOUT</a></div>
+    <div id="statePill" class="pill">OFFLINE</div>
+    <div class="clock"><span id="clock">--:--:--</span><small id="date"></small></div>
+  </header>
+
+  <aside class="panel left">
+    <h2>Systems</h2>
+    <dl id="sys" class="rows"></dl>
+    <h2>Try saying</h2>
+    <div id="chips" class="chips"></div>
+  </aside>
+
+  <section class="core">
+    <canvas id="orb" aria-label="Reactor core. Click to mute or unmute the microphone."></canvas>
+    <div id="heard" class="heard"></div>
+    <div id="caption" class="caption">Standing by.</div>
+  </section>
+
+  <aside class="panel right">
+    <h2>Display</h2>
+    <div id="cards" class="cards"></div>
+    <h2>Log</h2>
+    <div id="log" class="log"></div>
+  </aside>
+
+  <footer class="bar">
+    <button id="micBtn" type="button" class="mic" title="Mute / unmute microphone" aria-pressed="false">MIC</button>
+    <form id="cmdForm" autocomplete="off">
+      <input id="cmdInput" type="text" placeholder="Say &quot;Jarvis, ...&quot; or type a command and press Enter" aria-label="Command">
+    </form>
+  </footer>
+</main>
+
+<script src="reactor.js"></script>
+<script src="skills.js"></script>
+<script src="jarvis.js"></script>
+</body>
+</html>

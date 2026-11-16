@@ -1,0 +1,5 @@
+node_modules/
+site/dist/
+site/public/app/
+.claude/
+.DS_Store
