@@ -28,6 +28,7 @@ Jarvis contacts a service only when you ask for the thing that service provides.
 | SomaFM radio (`ice2.somafm.com`, `ice4.somafm.com`, `ice6.somafm.com`, `ice1.somafm.com`) | You ask Jarvis to play music | Nothing about you. The station streams to your browser like any web radio |
 | SomaFM (`somafm.com`) | You ask "what's playing" | The station name |
 | Ollama (`localhost:11434`) | You have a local AI model running | Your question, to your own computer only |
+| PC companion (`127.0.0.1:8765`) | You run the companion and ask Jarvis to open an app, a folder, press a media key, change volume or lock | The action's name, to your own computer only |
 
 As with any web request, each service sees your IP address. No API keys, user IDs or cookies are sent, and the page sends no referrer.
 
@@ -52,6 +53,10 @@ No model is trained on what you say. The conversation is kept in memory for foll
 ## Music
 
 "Play some music", "play jazz" and similar start SomaFM radio inside Jarvis. SomaFM is free, listener-supported internet radio with no adverts and no account. The page may only play audio from the four SomaFM stream hosts in the table above; that list is enforced by the browser like the rest of the allow-list. Streaming uses your internet data while music plays. "Play ... on YouTube" opens YouTube in a new tab instead.
+
+## The PC companion
+
+The optional companion (`companion/jarvis_companion.py`) is a program you run yourself so that Jarvis can open your apps and folders, press media keys, change the volume and lock the screen. It listens on `127.0.0.1` only and never contacts the internet. Jarvis must pair with it using a code shown in its window, and you approve each kind of action there the first time. Jarvis sends only names, such as "spotify" or "downloads"; the companion looks them up in a list you control. The pairing token is kept in this browser's storage and is never shown, even in "what do you know about me". The landing page cannot contact the companion. Details: [COMPANION.md](COMPANION.md).
 
 ## How this is enforced
 

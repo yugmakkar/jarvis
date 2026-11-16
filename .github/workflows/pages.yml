@@ -24,6 +24,7 @@ jobs:
         with:
           node-version: 20
       - run: node --test tests/
+      - run: python3 -m unittest discover companion
   build:
     needs: test
     runs-on: ubuntu-latest

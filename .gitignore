@@ -3,3 +3,4 @@ site/dist/
 site/public/app/
 .claude/
 .DS_Store
+__pycache__/

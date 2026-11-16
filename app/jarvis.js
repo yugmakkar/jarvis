@@ -89,6 +89,7 @@
       duck(on) { ducked = on; apply(); },
       get volume() { return level; },
       get station() { return audio.paused ? null : id; },
+      get loaded() { return id; },   // a station was chosen, even if paused
     };
   })();
 
@@ -277,6 +278,7 @@
       ['Voice output', window.speechSynthesis ? (voice ? voice.name.replace(/Microsoft |Google /, '').slice(0, 18) : 'default') : 'none'],
       ['Brain', Skills.brain()],
       ['Music', music.station ? Skills.stationName(music.station) : 'off'],
+      ['Companion', Skills.companionLabel()],
       ...await Skills.systemRows()];
     $('sys').replaceChildren(...rows.flatMap(([k, v]) => {
       const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; return [dt, dd];
@@ -327,6 +329,7 @@
     $('setSpeech').checked = s.get('speech', true);
     $('setRecog').value = s.get('voiceMode', 'prefer');
     showAiStatus();
+    Skills.probeCompanion().then(() => { $('compStatus').textContent = { paired: 'Paired. Jarvis can open your apps and folders, control media and volume, and lock the screen.', unpaired: 'Running, not paired. Type the six-digit code from the companion window.', off: 'Not running. Start start-companion in the Jarvis folder to let Jarvis control this computer.' }[Skills.companionLabel().startsWith('paired') ? 'paired' : Skills.companionLabel() === 'not paired' ? 'unpaired' : 'off']; });
     const voices = window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
     $('setVoice').replaceChildren(new Option('Automatic', ''), ...voices.map(v => new Option(`${v.name} (${v.lang})`, v.name)));
     $('setVoice').value = s.get('voice', '');
@@ -348,6 +351,12 @@
     $('aiStatus').textContent = Skills.brain().startsWith('Ollama') ? `Using Ollama (${Skills.brain().slice(9)}). ${text}` : text;
     $('aiBtn').hidden = !button; $('aiBtn').textContent = button;
   }
+  $('compBtn').addEventListener('click', async () => {
+    const reply = await Skills.pairCompanion($('compCode').value.trim(), ctx);
+    $('compCode').value = '';
+    $('compStatus').textContent = reply.say;
+    refreshSystems();
+  });
   $('aiBtn').addEventListener('click', async () => {
     $('aiBtn').disabled = true;
     $('aiStatus').textContent = 'Starting the download in Chrome\u2026';
@@ -405,7 +414,7 @@
 
   $('initBtn').addEventListener('click', async () => {
     $('boot').classList.add('gone');
-    await Promise.all([initAudio(), Skills.probeBrain(), Brain.chromeStatus()]);
+    await Promise.all([initAudio(), Skills.probeBrain(), Brain.chromeStatus(), Skills.probeCompanion()]);
     setState('standby');
     const choice = SR && !micBlocked ? await setUpHearing() : (setMuted(true), { mode: 'off' });
     refreshSystems();

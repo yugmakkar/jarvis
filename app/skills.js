@@ -14,7 +14,7 @@ const Skills = (() => {
     get(k, d) { try { return JSON.parse(localStorage.getItem('jarvis.' + k)) ?? d; } catch { return d; } },
     set(k, v) { localStorage.setItem('jarvis.' + k, JSON.stringify(v)); },
     // Everything Jarvis has saved on this device, and a way to wipe it. Nothing is stored anywhere else.
-    all() { const out = {}; for (const k of Object.keys(localStorage)) if (k.startsWith('jarvis.') && store.get(k.slice(7)) != null) out[k.slice(7)] = store.get(k.slice(7)); return out; },
+    all() { const out = {}; for (const k of Object.keys(localStorage)) if (k.startsWith('jarvis.') && store.get(k.slice(7)) != null) out[k.slice(7)] = k === 'jarvis.companionToken' ? 'saved (hidden)' : store.get(k.slice(7)); return out; },
     erase() { for (const k of Object.keys(localStorage)) if (k.startsWith('jarvis.')) localStorage.removeItem(k); },
   };
   const sir = () => store.get('name', 'sir');
@@ -191,6 +191,71 @@ const Skills = (() => {
     } catch { /* fall through */ }
     return { say: `This is ${s[1]}, ${s[2]}.`, card: nowCard(s) };
   }
+
+  /* ---------------- the PC companion (companion/jarvis_companion.py) ---------------- */
+  // A small program the user runs on their own computer. It listens on 127.0.0.1 only, accepts a paired page,
+  // and does a fixed list of things: open an app from the user's own list, open a personal folder, media keys,
+  // volume, lock. Jarvis sends names only. See docs/COMPANION.md for the security model.
+
+  const COMPANION = 'http://127.0.0.1:8765';
+  const comp = { state: 'off', apps: [] };   // off = not running, unpaired, paired
+
+  async function companionFetch(path, body) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000);
+    const headers = {}, token = store.get('companionToken');
+    if (token) headers.Authorization = 'Bearer ' + token;
+    if (body) headers['Content-Type'] = 'application/json';
+    try {
+      const r = await fetch(COMPANION + path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined, signal: ctl.signal });
+      return { status: r.status, data: await r.json().catch(() => ({})) };
+    } finally { clearTimeout(timer); }
+  }
+
+  async function probeCompanion() {
+    try {
+      const s = await companionFetch('/status');
+      if (s.status !== 200) { comp.state = 'off'; return comp.state; }
+      comp.state = s.data.paired ? 'paired' : 'unpaired';
+      if (comp.state === 'paired') { const a = await companionFetch('/apps'); comp.apps = (a.data && a.data.apps) || []; }
+    } catch { comp.state = 'off'; }
+    return comp.state;
+  }
+  const companionLabel = () => comp.state === 'paired' ? `paired · ${comp.apps.length} apps` : comp.state === 'unpaired' ? 'not paired' : 'not running';
+
+  const NOT_RUNNING = () => ({ say: `That needs the Jarvis companion on your computer, ${sir()}. Start it, then pair it in Settings.`,
+    card: { title: 'PC companion', text: 'The companion is a small, free program you run on your own computer. It lets Jarvis open your apps and folders, control media and volume, and lock the screen. Start it with start-companion in the Jarvis folder.' } });
+
+  async function pairCompanion(code, ctx) {
+    if (ctx && ctx.demo) return { say: 'Pairing works in the full app, with the companion running.' };
+    if (!/^\d{6}$/.test(code || '')) return { say: `Say or type the six-digit code from the companion window, ${sir()}. For example, pair companion 123456.` };
+    try {
+      const r = await companionFetch('/pair', { code });
+      if (r.status !== 200 || !r.data.token) return { say: `That code didn't work, ${sir()}. Check the companion window for the current one.` };
+      store.set('companionToken', r.data.token);
+      await probeCompanion();
+      return { say: `Paired with the companion, ${sir()}. I can open ${comp.apps.length} of your apps, your folders, control media and volume, and lock the computer.`,
+        card: { title: 'PC companion · paired', list: comp.apps } };
+    } catch { comp.state = 'off'; return NOT_RUNNING(); }
+  }
+
+  async function pc(ctx, action, name, done) {
+    if (ctx && ctx.demo) return { say: 'Controlling your computer works in the full app, with the companion running.' };
+    if (comp.state !== 'paired') await probeCompanion();
+    if (comp.state === 'off') return NOT_RUNNING();
+    if (comp.state === 'unpaired') return { say: `The companion is running but not paired yet, ${sir()}. Open Settings and enter the code shown in its window.` };
+    let r;
+    try { r = await companionFetch('/action', { action, name }); } catch { comp.state = 'off'; return NOT_RUNNING(); }
+    const error = r.data && r.data.error;
+    if (r.status === 200) return { say: done, sleep: true };
+    if (r.status === 401) { comp.state = 'unpaired'; return { say: `The companion no longer recognises me, ${sir()}. Pair it again in Settings.` }; }
+    if (error === 'needs_approval') return { say: `Please approve that in the companion window, ${sir()}, then ask me again.` };
+    if (error === 'not_approved') return { say: `The companion can't ask for your approval because it has no window. Start it with start-companion, ${sir()}.` };
+    if (error === 'not_listed') return { say: `${titleCase(name)} isn't on your app list, ${sir()}. Add it to apps.json in the companion folder.`, card: { title: 'Apps I can open', list: r.data.apps || [] } };
+    return { say: `That didn't work, ${sir()}. ${(r.data && r.data.detail) || ''}`.trim() };
+  }
+
+  const appName = text => text.toLowerCase().replace(/^(?:the|my) /, '').replace(/ (?:app|application|program)$/, '').trim();
+  const radioOn = ctx => !!(ctx && ctx.music && ctx.music.station);   // Jarvis's own radio is playing: music commands are its
 
   /* ---------------- dates ---------------- */
 
@@ -536,6 +601,27 @@ const Skills = (() => {
     [/^(?:take a note|note|remember)(?: that)? (.+)$/, m => { store.set('notes', [...store.get('notes', []), m[1]]); return { say: 'Noted.', card: notesCard() }; }],
     [/^(clear|delete) (my |all )?notes$/, () => { store.set('notes', []); return { say: 'Notes cleared.' }; }],
     [/\bnotes\b/, () => { const n = store.get('notes', []); return n.length ? { say: `You have ${n.length} note${n.length > 1 ? 's' : ''}. ${n.join('. ')}.`, card: notesCard() } : { say: 'You have no notes.' }; }],
+    // the PC companion. Rule for music words: if Jarvis's radio is playing they control the radio, otherwise the computer.
+    [/^pair (?:with )?(?:the )?(?:pc )?companion(?: (?:with )?(?:the )?(?:code )?(\d{6}))?$/, (m, ctx) => pairCompanion(m[1], ctx)],
+    [/^(?:unpair|forget|disconnect) (?:the )?(?:pc )?companion$/, () => { store.set('companionToken', null); comp.state = 'off'; comp.apps = []; return { say: 'Companion forgotten. To stop it trusting this page too, type unpair in its window.' }; }],
+    [/^lock (?:the |my |this )?(?:computer|pc|screen|laptop|desktop|workstation)$/, (m, ctx) => pc(ctx, 'lock', '', 'Locking the computer.')],
+    [/^open (?:my |the )?(downloads|documents|desktop|pictures|photos|music|videos|home)(?: folder)?$/, (m, ctx) => pc(ctx, 'open_folder', m[1], `Opening your ${m[1]} folder.`)],
+    [/^(?:open|launch|start|run) (.+)$/, (m, ctx) => (comp.state === 'paired' && comp.apps.includes(appName(m[1])) ? pc(ctx, 'open_app', appName(m[1]), `Opening ${appName(m[1])}.`) : null)],
+    [/^(?:pause|resume|unpause|stop|continue) (?:the )?(?:music|song|track|video|media|playback|spotify)$|^(?:resume|unpause)$/, (m, ctx) => {
+      if (radioOn(ctx) || (ctx && ctx.music && ctx.music.loaded && /resume|unpause|continue/.test(m[0]))) return null;
+      return comp.state === 'paired' ? pc(ctx, 'media', 'playpause', '') : null;
+    }],
+    [/^(?:next|skip)(?: the| this)? (?:song|track)$|^(?:previous|last) (?:song|track)$|^(?:go )?back a (?:song|track)$/, (m, ctx) => {
+      const back = /previous|last|back/.test(m[0]);
+      if (radioOn(ctx)) return back ? { say: "There's no going back on live radio, I'm afraid." } : null;
+      return pc(ctx, 'media', back ? 'previous' : 'next', '');
+    }],
+    [/^(?:system |computer |pc )volume (up|down)$|^(?:turn (?:it|the music|the volume|the sound) |volume )(up|down)$|^(louder|quieter|softer)$/, (m, ctx) => {
+      if (radioOn(ctx) && !/^(system|computer|pc) /.test(m[0])) return null;
+      if (!/^(system|computer|pc) /.test(m[0]) && comp.state !== 'paired') return null;   // no companion: the radio's volume, as before
+      return pc(ctx, 'volume', /up|louder/.test(m[0]) ? 'up' : 'down', '');
+    }],
+    [/^(?:mute|unmute) (?:the )?(?:sound|volume|audio|computer|pc|speakers|system)$/, (m, ctx) => pc(ctx, 'volume', 'mute', '')],
     // music: radio inside Jarvis; YouTube only when asked for by name
     [/^(?:play|search|find|put on) (.+?) on youtube$/, m => openUrl('https://www.youtube.com/results?search_query=' + encodeURIComponent(m[1]), `Pulling up ${m[1]} on YouTube.`)],
     [/^(?:stop|pause|turn off|kill|end) (?:the |this )?(?:music|radio|song|station|playback|track)$|^(?:music|radio) off$/, (m, ctx) => needMusic(ctx, mu => { mu.pause(); return { say: '', sleep: true }; })],
@@ -588,6 +674,6 @@ const Skills = (() => {
   }
 
   const streamUrls = id => STREAM_HOSTS.map(h => `https://${h}/${id}-128-mp3`);
-  return { handle, wake, attach, systemRows, probeBrain, brain, persona, streamUrls, stationName: id => (station(id) || [])[1],
+  return { handle, wake, attach, systemRows, probeBrain, brain, persona, streamUrls, probeCompanion, pairCompanion, companionLabel, stationName: id => (station(id) || [])[1],
     settings: store, examples: EXAMPLES };
 })();

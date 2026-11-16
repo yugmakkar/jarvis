@@ -32,7 +32,7 @@ const FAKE = {
   'mymemory': { responseData: { translatedText: 'buenos días' } },
 };
 
-function boot(saved = {}, { offline = false, extra = {} } = {}) {
+function boot(saved = {}, { offline = false, extra = {}, companion = null } = {}) {
   // A storage object whose only enumerable keys are the stored items, like the real localStorage.
   const localStorage = {};
   Object.defineProperties(localStorage, {
@@ -43,8 +43,13 @@ function boot(saved = {}, { offline = false, extra = {} } = {}) {
   for (const [k, v] of Object.entries(saved)) localStorage['jarvis.' + k] = JSON.stringify(v);
 
   const calls = [], said = [], opened = [];
-  const fetch = async url => {
+  const fetch = async (url, init = {}) => {
     calls.push(String(url));
+    if (String(url).startsWith('http://127.0.0.1:8765')) {   // the PC companion: a fake one if the test provides it
+      if (!companion) throw new Error('connection refused');
+      const r = companion(String(url).slice(21), init);
+      return { ok: r.status < 300, status: r.status, json: async () => r.data };
+    }
     if (offline || String(url).includes('localhost')) throw new Error('network down');
     const key = Object.keys(FAKE).find(k => String(url).includes(k));
     if (!key) throw new Error('unexpected request: ' + url);
@@ -373,4 +378,102 @@ test('without any AI, factual questions get the sentence that answers them', asy
   for (const q of ['write me a poem', 'what should i eat for dinner', 'can you help me plan a trip', 'what do you think about cats'])
     assert.equal(Brain.kind(q), 'open', q);
   assert.equal(JSON.stringify(Brain.sentences('It is 3.5 km long. St. Louis is a city. Done.')), JSON.stringify(['It is 3.5 km long.', 'St. Louis is a city.', 'Done.']));   // JSON: arrays from the sandbox are another realm
+});
+
+/* ---------------- the PC companion ---------------- */
+
+// A fake companion that behaves like companion/jarvis_companion.py: code 123456, token "tok", apps notepad and spotify.
+function fakeCompanion({ approved = ['open_app', 'open_folder', 'media', 'volume', 'lock'] } = {}) {
+  const done = [];
+  const handler = (path, init) => {
+    const authed = init.headers && init.headers.Authorization === 'Bearer tok';
+    if (path === '/status') return { status: 200, data: { paired: !!authed } };
+    if (path === '/apps') return authed ? { status: 200, data: { apps: ['notepad', 'spotify'] } } : { status: 401, data: { error: 'not_paired' } };
+    const body = JSON.parse(init.body || '{}');
+    if (path === '/pair') return body.code === '123456' ? { status: 200, data: { token: 'tok' } } : { status: 401, data: { error: 'wrong_code' } };
+    if (!authed) return { status: 401, data: { error: 'not_paired' } };
+    if (!approved.includes(body.action)) return { status: 403, data: { error: 'needs_approval' } };
+    if (body.action === 'open_app' && !['notepad', 'spotify'].includes(body.name)) return { status: 404, data: { error: 'not_listed', apps: ['notepad', 'spotify'] } };
+    done.push([body.action, body.name]);
+    return { status: 200, data: { ok: true } };
+  };
+  return { handler, done };
+}
+
+test('companion: pairing stores the token, and the data view hides it', async () => {
+  const fc = fakeCompanion();
+  const { ask, Skills } = boot({}, { companion: fc.handler });
+  assert.match((await ask('pair companion 000000')).say, /didn't work/);
+  assert.match((await ask('pair companion 123456')).say, /^Paired with the companion/);
+  assert.equal(Skills.companionLabel(), 'paired · 2 apps');
+  const data = await ask('what do you know about me');
+  assert.doesNotMatch(JSON.stringify(data), /\btok\b/);
+  assert.match(JSON.stringify(data), /saved \(hidden\)/);
+});
+
+test('companion: opens listed apps, folders, media and volume; websites still open as websites', async () => {
+  const fc = fakeCompanion();
+  const { ask, Skills, opened } = boot({ companionToken: 'tok' }, { companion: fc.handler });
+  await Skills.probeCompanion();
+  assert.equal((await ask('open spotify')).say, 'Opening spotify.');
+  assert.equal((await ask('launch the notepad app')).say, 'Opening notepad.');
+  await ask('open youtube');                                  // not an app on the list: the website, as before
+  assert.equal(opened[0], 'https://www.youtube.com');
+  await ask('open my downloads folder');
+  await ask('next song');
+  await ask('pause the music');
+  await ask('volume up');
+  await ask('mute the sound');
+  await ask('lock the computer');
+  assert.deepEqual(fc.done, [['open_app', 'spotify'], ['open_app', 'notepad'], ['open_folder', 'downloads'], ['media', 'next'],
+    ['media', 'playpause'], ['volume', 'up'], ['volume', 'mute'], ['lock', '']]);
+});
+
+test("companion: while Jarvis's radio plays, music words control the radio", async () => {
+  const fc = fakeCompanion();
+  const { Skills } = boot({ companionToken: 'tok' }, { companion: fc.handler });
+  await Skills.probeCompanion();
+  const { log, music } = fakeMusic();
+  const ctx = { stopSpeaking() {}, setMuted() {}, music };
+  await Skills.handle('play jazz', ctx);
+  await Skills.handle('next song', ctx);
+  await Skills.handle('volume up', ctx);
+  await Skills.handle('pause the music', ctx);
+  assert.deepEqual(fc.done, [], 'nothing went to the computer');
+  assert.equal(log.at(-1)[0], 'pause');
+  await Skills.handle('system volume up', ctx);               // "system" always means the computer
+  assert.deepEqual(fc.done, [['volume', 'up']]);
+});
+
+test('companion: plain "mute" still means stop listening', async () => {
+  const fc = fakeCompanion();
+  let muted = false;
+  const { Skills } = boot({ companionToken: 'tok' }, { companion: fc.handler });
+  await Skills.handle('mute', { stopSpeaking() {}, setMuted: m => { muted = m; } });
+  assert.equal(muted, true);
+  assert.deepEqual(fc.done, []);
+});
+
+test('companion: helpful replies when it is missing, unpaired, unapproved or the app is unknown', async () => {
+  assert.match((await boot().ask('lock the computer')).say, /needs the Jarvis companion/);
+  const unpaired = boot({}, { companion: fakeCompanion().handler });
+  assert.match((await unpaired.ask('lock the computer')).say, /not paired yet/);
+  const strict = boot({ companionToken: 'tok' }, { companion: fakeCompanion({ approved: [] }).handler });
+  assert.match((await strict.ask('lock the computer')).say, /approve that in the companion window/);
+  const fc = fakeCompanion();
+  const b = boot({ companionToken: 'tok' }, { companion: fc.handler });
+  await b.Skills.probeCompanion();
+  assert.match((await b.ask('open my documents')).say, /^Opening your documents folder/);
+});
+
+test('companion: the landing-page demo can never reach it', async () => {
+  const fc = fakeCompanion();
+  const { Skills, calls } = boot({ companionToken: 'tok' }, { companion: fc.handler });
+  const demo = { demo: true, stopSpeaking() {}, setMuted() {} };
+  assert.match((await Skills.handle('lock the computer', demo)).say, /works in the full app/);
+  assert.match((await Skills.handle('pair companion 123456', demo)).say, /works in the full app/);
+  assert.equal(calls.filter(c => c.includes('8765')).length, 0);
+  assert.doesNotMatch(read('site/vite.config.js'), /8765/, 'the website is not allowed to contact the companion');
+  assert.match(read('app/index.html'), /connect-src[^;]*http:\/\/127\.0\.0\.1:8765/, 'the app is');
+  assert.match(read('docs/PRIVACY.md'), /127\.0\.0\.1:8765/);
 });
