@@ -104,7 +104,7 @@ test('maths never evaluates text as code', async () => {
   const { ask } = boot();
   for (const q of ['what is alert(1)', 'calculate process.exit()', 'what is 1; while(true){}'])
     assert.doesNotMatch((await ask(q)).say, /^That's/, q);
-  for (const file of ['app/skills.js', 'app/jarvis.js', 'app/reactor.js'])
+  for (const file of ['app/skills.js', 'app/jarvis.js', 'app/reactor.js', 'app/hearing.js'])
     assert.doesNotMatch(read(file), /\beval\(|\bFunction\(/, file + ' must not use eval or Function');
 });
 

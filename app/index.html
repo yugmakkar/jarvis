@@ -66,6 +66,11 @@
     <label>Wake word <input id="setWake" type="text" placeholder="jarvis" maxlength="30"></label>
     <label>Voice <select id="setVoice"></select></label>
     <label>Speaking speed <input id="setRate" type="range" min="0.7" max="1.5" step="0.05"></label>
+    <label>Speech recognition <select id="setRecog">
+      <option value="prefer">On this device when possible</option>
+      <option value="only">On this device only (voice off if unavailable)</option>
+      <option value="cloud">Browser's online service</option>
+    </select></label>
     <label class="check"><input id="setSpeech" type="checkbox"> Speak replies aloud</label>
     <p class="hint">Saved only in this browser, on this device. Nothing here is sent anywhere.</p>
     <div class="buttons">
@@ -78,6 +83,7 @@
 
 <script src="reactor.js"></script>
 <script src="skills.js"></script>
+<script src="hearing.js"></script>
 <script src="jarvis.js"></script>
 </body>
 </html>

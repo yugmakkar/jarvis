@@ -5,8 +5,8 @@ A free, open-source voice assistant that wakes to its name, answers out loud and
 **[Live site and demo](https://yugmakkar.github.io/jarvis/)** · **[Open the assistant](https://yugmakkar.github.io/jarvis/app/)**
 
 - **Free for everyone.** No account, no API key, no subscription. Every data source is a free public API.
-- **Private.** There is no Jarvis server. Your notes and settings stay in your browser. See [docs/PRIVACY.md](docs/PRIVACY.md).
-- **Small.** The assistant is under 900 lines of plain JavaScript with no framework and no build step.
+- **Private.** There is no Jarvis server. Your notes and settings stay in your browser, and in recent Chrome your voice is recognised on your own computer. See [docs/PRIVACY.md](docs/PRIVACY.md).
+- **Small.** The assistant is about 1,000 lines of plain JavaScript with no framework and no build step.
 - **Tested.** An automated test suite runs before every deployment.
 - **Yours.** Fork it, rename it, add skills. See [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md).
 
@@ -35,7 +35,7 @@ After Jarvis answers, he keeps listening for about 8 seconds, so follow-up comma
 
 ### Settings
 
-Click **SETTINGS** in the top bar to change what Jarvis calls you, your home city, the wake word, the voice and its speed, or to turn spoken replies off. **Erase all my data** removes everything Jarvis has saved on the device. No code needed.
+Click **SETTINGS** in the top bar to change what Jarvis calls you, your home city, the wake word, the voice and its speed, where speech is recognised, or to turn spoken replies off. **Erase all my data** removes everything Jarvis has saved on the device. No code needed.
 
 ## Run it on your computer
 
@@ -75,11 +75,14 @@ If you use the hosted version rather than a local copy, Ollama must be told to a
 
 ## Browser support
 
-| | Voice input | Spoken replies | Typed commands |
-|---|---|---|---|
-| Chrome, Edge (desktop) | Yes | Yes | Yes |
-| Safari | Partial | Yes | Yes |
-| Firefox | No | Yes | Yes |
+| | Voice input | Where speech is recognised | Spoken replies | Typed commands |
+|---|---|---|---|---|
+| Chrome 139+ (desktop) | Yes | On your device (after a one-time model download by the browser) | Yes | Yes |
+| Edge, older Chrome | Yes | Usually the browser maker's online service | Yes | Yes |
+| Safari | Partial | Depends on the system | Yes | Yes |
+| Firefox | No | | Yes | Yes |
+
+The Systems panel shows which one is in use. To never send audio anywhere, choose **On this device only** in Settings. See [docs/PRIVACY.md](docs/PRIVACY.md#voice).
 
 Opening sites by voice may be stopped by the pop-up blocker the first time, because a voice command is not a click. Allow pop-ups for the page once.
 
@@ -92,6 +95,7 @@ Jarvis is a web page, so it cannot launch desktop programs, change system settin
 ```
 app/        The assistant. Plain HTML, CSS and JavaScript. This is all you need to run Jarvis.
   jarvis.js   Voice loop: hearing, deciding, speaking
+  hearing.js  Chooses on-device or online speech recognition
   skills.js   Every command, as a list of pattern + function pairs
   reactor.js  The animated core
   sw.js       Offline cache for the installed app

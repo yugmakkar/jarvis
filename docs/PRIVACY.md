@@ -43,17 +43,34 @@ An automated test in `tests/` fails the build if the code contacts a host that i
 
 You can verify this yourself: open the browser's developer tools, go to the Network tab, and use Jarvis. You will see requests to the hosts in the table and nothing else.
 
-## Voice: the one thing Jarvis does not control
+## Voice
 
-Jarvis uses the speech recognition built into your browser. In Chrome and Edge that feature works by sending microphone audio to the browser maker's speech service (Google or Microsoft) to be turned into text. Jarvis never receives or stores the audio, only the resulting text, but the audio does leave your device while the microphone is on.
+Jarvis uses the speech recognition built into your browser. Jarvis itself never receives or stores audio, only the resulting text. Where the browser turns your speech into text depends on the browser:
 
-If that matters to you:
+| Systems panel shows | What happens to your voice |
+|---|---|
+| Recognition: **on this device** | Audio is processed on your computer and never leaves it. Jarvis asks the browser for this with `processLocally`, which the browser must honour or refuse with an error |
+| Recognition: **downloading pack** | The browser is downloading its speech model for on-device use. Until it finishes, the online service below is used (or nothing, in "on this device only" mode) |
+| Recognition: **online service** | Microphone audio is sent to the browser maker's speech service (Google for Chrome, Microsoft for Edge) to be turned into text |
+| Recognition: **off** | No speech recognition runs |
+
+On-device recognition needs Chrome 139 or later on Windows, macOS or Linux. The first time, the browser downloads an English speech model from its maker. That download is made by the browser, not by this page, so it does not appear in the allow-list. Other browsers currently use the online service.
+
+You choose in **Settings → Speech recognition**:
+
+- **On this device when possible** (default): on-device where the browser supports it, the online service otherwise.
+- **On this device only**: if the browser cannot recognise speech on the device, voice input stays off and no audio is sent anywhere. Type your commands instead.
+- **Browser's online service**: always use the online service. Pick this if the on-device download misbehaves in your browser.
+
+If on-device recognition stops working while Jarvis is running, Jarvis says so out loud before switching to the online service, and in "on this device only" mode turns voice input off instead.
+
+You can check for yourself: in on-device mode, turn off your Wi-Fi and say the wake word. Jarvis still hears you.
+
+Other ways to keep the microphone quiet:
 
 - Click the core or the MIC button to mute. Typed commands use no speech service.
 - Say "go to sleep" to mute by voice.
-- Spoken replies use voices installed on your device. Some browsers also offer online voices; Jarvis prefers whichever is listed first among its favourites, which you can change in `app/jarvis.js`.
-
-Fully on-device speech recognition is a goal for a later version.
+- Spoken replies use voices installed on your device. Some browsers also offer online voices; choose a voice in Settings.
 
 ## The hosted version and GitHub
 

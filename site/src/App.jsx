@@ -251,7 +251,7 @@ export default function App() {
             <h2>Private by construction, <span className="serif">not by promise.</span></h2>
             <p>There is no Jarvis server, so there is nowhere for your data to go. Notes, your name and your settings stay in your browser&rsquo;s storage on your device.</p>
             <p>The app ships with a browser-enforced allow-list. It can only contact the services in this table, and only when you ask for that thing. Ask &ldquo;what do you know about me&rdquo; to see everything it has saved, and erase it all from Settings.</p>
-            <p className="fine">One honest caveat: in Chrome and Edge, turning speech into text is done by the browser maker&rsquo;s speech service, not by Jarvis. Mute the mic and type if you prefer; typed commands involve no speech service at all.</p>
+            <p className="fine">On voice: in recent Chrome, Jarvis turns speech into text on your device, and the Systems panel says &ldquo;on this device&rdquo; when it does. Where the browser cannot, it uses the browser maker&rsquo;s online speech service instead, unless you choose &ldquo;on this device only&rdquo; in Settings. Typed commands involve no speech service at all.</p>
             <a className="textlink" href={`${REPO}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noopener noreferrer">Read the full privacy notes <Arrow /></a>
           </div>
           <div className="tablewrap">

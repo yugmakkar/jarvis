@@ -138,12 +138,22 @@
 
   /* ---------------- hearing ---------------- */
 
-  function startRecognition() {
+  // hearing.mode: 'local' = audio never leaves the device; 'cloud' = the browser's online speech service; 'off'.
+  let hearing = { mode: 'off', lang: 'en-US' };
+  let failures = 0;   // consecutive errors with no speech heard; grows the restart delay so errors cannot loop
+
+  function startRecognition(mode, lang) {
+    if (rec) { rec.onend = rec.onerror = rec.onresult = null; try { rec.abort(); } catch { /* not running */ } rec = null; recRunning = false; }
+    hearing = { mode, lang };
+    refreshSystems();
+    if (mode === 'off') return;
     rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
-    rec.lang = /^en/.test(navigator.language) ? navigator.language : 'en-US';
+    rec.lang = lang;
+    if (mode === 'local') rec.processLocally = true;   // the browser must not send audio anywhere
     rec.onresult = e => {
+      failures = 0;
       if (state === 'speaking' || state === 'thinking' || Date.now() < deafUntil) return;
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -153,13 +163,22 @@
       if (interim) $('heard').textContent = interim;
     };
     rec.onerror = e => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        micBlocked = true; setMuted(true);
+      const next = Hearing.onError(e.error, hearing.mode, Skills.settings.get('voiceMode', 'prefer'));
+      if (next === 'retry') { failures++; return; }
+      if (next === 'blocked') {
+        micBlocked = true; startRecognition('off', lang); setMuted(true);
         $('caption').textContent = 'Microphone access is blocked. Allow it in the address bar, or type commands below.';
+      } else if (next === 'cloud') {
+        startRecognition('cloud', lang);
+        log('ai', 'On-device speech recognition failed, so I am using the browser’s online speech service.');
+      } else {
+        startRecognition('off', lang); setMuted(true);
+        $('caption').textContent = 'On-device speech recognition is unavailable here, so voice input is off. Type your commands below.';
       }
     };
     // The browser stops recognition after a silence; restarting makes it "always on".
-    rec.onend = () => { recRunning = false; if (!muted) setTimeout(listen, 250); };
+    // After repeated errors (offline, no speech service) wait longer between attempts: 250 ms up to 30 s.
+    rec.onend = () => { recRunning = false; if (!muted) setTimeout(listen, Math.min(30000, 250 * 2 ** failures)); };
     listen();
   }
 
@@ -168,10 +187,32 @@
     try { rec.start(); recRunning = true; } catch { /* already started */ }
   }
 
+  // Picks local / cloud / off from the browser's abilities and the user's setting. If an on-device pack can be
+  // downloaded, the browser fetches it in the background and Jarvis switches to it when it is ready.
+  async function setUpHearing() {
+    const setting = Skills.settings.get('voiceMode', 'prefer');
+    const choice = await Hearing.choose(SR, { navLang: navigator.language, setting });
+    startRecognition(micBlocked ? 'off' : choice.mode, choice.lang);
+    if (hearing.mode === 'off' && !muted) setMuted(true);
+    if (!choice.installable || micBlocked) return choice;
+    hearing.installing = true; refreshSystems();
+    Hearing.install(SR, choice.installable).then(ok => {
+      hearing.installing = false;
+      if (ok && Skills.settings.get('voiceMode', 'prefer') !== 'cloud') {
+        const wasOff = hearing.mode === 'off';
+        startRecognition('local', choice.installable);
+        if (wasOff && muted && !micBlocked) setMuted(false);   // "on-device only" kept the mic off until now
+        ctx.announce('On-device speech recognition is ready. What you say no longer leaves this computer.'); }
+      else refreshSystems();
+    });
+    return choice;
+  }
+
   function setMuted(m) {
     muted = m;
     $('micBtn').setAttribute('aria-pressed', String(m));
     if (m) { armedUntil = 0; if (rec && recRunning) rec.abort(); }
+    else if (!rec && SR && state !== 'offline') { micBlocked = false; setUpHearing(); }   // was off: try again
     else { micBlocked = false; listen(); }
     if (state !== 'speaking' && state !== 'thinking') idle();
   }
@@ -200,6 +241,7 @@
   }
   async function refreshSystems() {
     const rows = [['Wake word', Skills.settings.get('wake', 'jarvis')], ['Voice input', !SR ? 'unsupported' : micBlocked ? 'blocked' : muted ? 'muted' : 'active'],
+      ['Recognition', hearing.installing ? 'downloading pack' : Hearing.label(hearing.mode)],
       ['Voice output', window.speechSynthesis ? (voice ? voice.name.replace(/Microsoft |Google /, '').slice(0, 18) : 'default') : 'none'],
       ['Brain', Skills.brain()],
       ...await Skills.systemRows()];
@@ -250,6 +292,7 @@
     $('setWake').value = s.get('wake', 'jarvis');
     $('setRate').value = s.get('rate', 1.05);
     $('setSpeech').checked = s.get('speech', true);
+    $('setRecog').value = s.get('voiceMode', 'prefer');
     const voices = window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
     $('setVoice').replaceChildren(new Option('Automatic', ''), ...voices.map(v => new Option(`${v.name} (${v.lang})`, v.name)));
     $('setVoice').value = s.get('voice', '');
@@ -257,7 +300,7 @@
   }
   $('settingsBtn').addEventListener('click', openSettings);
   $('cancelBtn').addEventListener('click', () => $('settings').close());
-  $('settingsForm').addEventListener('submit', e => {
+  $('settingsForm').addEventListener('submit', async e => {
     e.preventDefault();
     const s = Skills.settings, text = id => $(id).value.trim();
     s.set('name', text('setName') || null);   // null = "not set", so the default applies again
@@ -266,9 +309,19 @@
     s.set('voice', $('setVoice').value || null);
     s.set('rate', Number($('setRate').value));
     s.set('speech', $('setSpeech').checked);
-    pickVoice(); refreshSystems();
+    const recogChanged = $('setRecog').value !== s.get('voiceMode', 'prefer');
+    s.set('voiceMode', $('setRecog').value === 'prefer' ? null : $('setRecog').value);
     $('settings').close();
-    ctx.announce(`Settings saved. I answer to ${s.get('wake', 'jarvis')}.`);
+    let note = '';
+    if (recogChanged && SR && state !== 'offline') {
+      micBlocked = false; muted = false; $('micBtn').setAttribute('aria-pressed', 'false');
+      const c = await setUpHearing();
+      note = hearing.mode === 'local' ? ' Speech recognition now runs on this device.'
+        : c.installable ? ' Downloading on-device speech recognition.'
+        : hearing.mode === 'off' ? ' On-device speech recognition is not available in this browser, so voice input is off.' : '';
+    }
+    pickVoice(); refreshSystems();
+    ctx.announce(`Settings saved. I answer to ${s.get('wake', 'jarvis')}.${note}`);
   });
   $('eraseBtn').addEventListener('click', () => {
     if (!confirm('Erase everything Jarvis has saved on this device (name, city, notes, reminders, settings)? This cannot be undone.')) return;
@@ -293,11 +346,15 @@
     $('boot').classList.add('gone');
     await Promise.all([initAudio(), Skills.probeBrain()]);
     setState('standby');
-    if (SR && !micBlocked) startRecognition(); else setMuted(true);
+    const choice = SR && !micBlocked ? await setUpHearing() : (setMuted(true), { mode: 'off' });
     refreshSystems();
     const h = new Date().getHours();
+    const where = choice.mode === 'local' ? ' Speech recognition runs on this device.'
+      : choice.installable ? ' I am downloading on-device speech recognition in the background.' : '';
     const hello = `Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}. All systems online.` +
-      (SR && !micBlocked ? ` Say ${Skills.settings.get('wake', 'jarvis')}, followed by a command.` : ' Voice input is unavailable, so type your commands.');
+      (hearing.mode !== 'off' ? ` Say ${Skills.settings.get('wake', 'jarvis')}, followed by a command.${where}`
+        : SR && !micBlocked && choice.reason !== 'unsupported' ? ' On-device speech recognition is not available in this browser, and you chose not to use an online service, so type your commands.'
+        : ' Voice input is unavailable, so type your commands.');
     const id = ++turn;
     log('ai', hello);
     await speak(hello);

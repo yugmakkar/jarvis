@@ -1,8 +1,8 @@
 /* Service worker: lets the installed app open instantly and offline.
  * It only ever touches this app's own files. Requests to other sites (weather, Wikipedia...)
  * pass straight through and are never stored. */
-const CACHE = 'jarvis-shell-v2';
-const SHELL = ['./', 'index.html', 'styles.css', 'reactor.js', 'skills.js', 'jarvis.js', 'manifest.webmanifest', 'icons/icon-192.png'];
+const CACHE = 'jarvis-shell-v3';
+const SHELL = ['./', 'index.html', 'styles.css', 'reactor.js', 'skills.js', 'hearing.js', 'jarvis.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(
