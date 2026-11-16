@@ -114,6 +114,7 @@ h3 { font-weight: 500; font-size: 19px; letter-spacing: -.02em; }
 .console__log .you::before { content: "› "; }
 .console__log .ai { color: var(--fg); }
 .console__log .data { color: var(--accent); font-size: 12px; }
+.console__log .fix { color: var(--fg-40); font-size: 12px; font-style: italic; }
 .console__try { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 22px 18px; }
 .console__try button { padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: none; font-size: 13px; color: var(--fg-60); cursor: pointer; transition: border-color .2s, color .2s; }
 .console__try button:hover { border-color: var(--accent); color: var(--fg); }

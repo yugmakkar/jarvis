@@ -35,6 +35,10 @@ A free, open-source voice assistant that wakes to its name, answers out loud and
 | "What do you know about me" | Shows everything saved on your device |
 | "Cancel all reminders" / "Go to sleep" | Clears the schedule / mutes the microphone until you click the core |
 
+**Typos are fine.** "wether in mumbia", "opne youtbe", "set a timr for 5 minutes" and "convrt 100 dolars to rupes" all work; the display shows what Jarvis understood. The matching runs on your device against the words Jarvis knows, and names are left for Wikipedia's own "did you mean".
+
+**The voice** is a calm British gentleman: Jarvis picks the best British male voice your device has and tunes its speed and pitch to suit it. Change the voice, speed and pitch in **SETTINGS** and press **Hear it** to try them. For the most natural sound, add a free British voice to your system (Windows: **Settings → Time & language → Speech → Add voices → English (United Kingdom)**; macOS has "Daniel").
+
 After Jarvis answers, he keeps listening for about 8 seconds, so follow-up commands do not need the wake word. Click the core to interrupt him or to mute and unmute the microphone. Tap **Space** to talk without saying the wake word, and press the up arrow in the command box to recall earlier commands.
 
 ### Settings

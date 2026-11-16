@@ -23,7 +23,7 @@ const REEL = [
   ['Jarvis, what is 18 times 24', "That's 432."],
   ['Jarvis, set a timer for ten minutes', 'Timer set for 10 minutes.'],
 ];
-const TRY = ['How far is the moon', 'Why is the sky blue', 'Weather in Mumbai', 'Convert 100 dollars to rupees', 'Translate good morning to Spanish', 'Days until Christmas'];
+const TRY = ['How far is the moon', 'Why is the sky blue', 'Wether in mumbia', 'Convert 100 dollars to rupees', 'Translate good morning to Spanish', 'Days until Christmas'];
 
 const CAPABILITIES = [
   ['Wakes to its name', 'Say "Jarvis", or any wake word you choose, and it listens. It understands the usual mis-hearings, answers out loud, and stays attentive for follow-ups.'],
@@ -142,6 +142,7 @@ function useConsole(stateRef) {
     const ctx = { demo: true, stopSpeaking() {}, setMuted() {}, announce: say => push('ai', say) };   // no music player in the demo
     const reply = await Skills.handle(text, ctx);
     if (id !== turn.current) return;
+    if (reply.understood) push('fix', `understood: ${reply.understood}`);   // shown when a typo was corrected
     push('ai', reply.say || 'Done.');
     if (reply.also) push('ai', reply.also.text);   // translations: the phrase in the other language
     if (reply.card && reply.card.rows) push('data', reply.card.rows.map(r => r.join(' ')).join('  ·  '));

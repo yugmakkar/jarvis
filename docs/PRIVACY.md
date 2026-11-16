@@ -93,7 +93,7 @@ Other ways to keep the microphone quiet:
 
 - Click the core or the MIC button to mute. Typed commands use no speech service.
 - Say "go to sleep" to mute by voice.
-- Spoken replies use voices installed on your device. Some browsers also offer online voices; choose a voice in Settings.
+- Spoken replies use a voice installed on your device whenever there is a suitable one. Jarvis prefers a British male voice, and if your device has none, it may use the browser's online British voice (Chrome's "Google UK English Male", Edge's "Natural" voices). With an online voice, the browser sends the text Jarvis speaks to Google or Microsoft to turn it into audio. The voice list in Settings marks online voices. To keep everything on your device, install a free British voice (Windows: **Settings → Time & language → Speech → Add voices → English (United Kingdom)**; macOS has "Daniel" built in) or pick an installed voice in Settings.
 
 ## The hosted version and GitHub
 

@@ -39,6 +39,27 @@ const Brain = (() => {
 
   // "write me a poem", "what should i do", "can you help me plan" need a thinking model; Wikipedia can't answer them.
   const OPEN = /\b(write|compose|poem|story|essay|email|letter|song|lyrics|summari[sz]e|brainstorm|ideas?|suggest|recommend|advice|opinion|plan|imagine|pretend|rewrite|fix my|debug|code|review)\b|\b(should|shall) (i|we)\b|\b(can|could|would|will|do|are) you\b|\byour (favou?rite|opinion|view)\b|\bwhat do you think\b/;
+  const QUESTION_WORDS = ['what', 'when', 'where', 'which', 'who', 'why', 'how', 'whats', 'tall', 'high', 'height', 'far', 'distance',
+    'big', 'large', 'old', 'long', 'deep', 'fast', 'speed', 'light', 'sound', 'heavy', 'weigh', 'many', 'much', 'capital', 'population',
+    'largest', 'biggest', 'smallest', 'tallest', 'longest', 'highest', 'deepest', 'fastest', 'oldest', 'currency', 'language',
+    'president', 'founder', 'founded', 'invented', 'discovered', 'built', 'born', 'died', 'meaning', 'difference', 'between', 'explain'];
+  const STARTERS = { wat: 'what', wats: 'whats', whta: 'what', waht: 'what', hw: 'how', hwo: 'how', wen: 'when', wher: 'where', whr: 'where', wy: 'why', whos: 'who is' };
+  // A tiny edit distance (one insertion, deletion, substitution or neighbour swap), enough for question words.
+  const oneEdit = (a, b) => {
+    if (a === b || Math.abs(a.length - b.length) > 1) return false;
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1) || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
+    return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+  };
+  function fixQuestion(question) {
+    return question.toLowerCase().split(' ').map(w => {
+      if (STARTERS[w]) return STARTERS[w];
+      if (w.length < 3 || QUESTION_WORDS.includes(w) || STOP.has(w)) return w;
+      const near = QUESTION_WORDS.filter(q => q.length > 2 && oneEdit(w, q));
+      return near.length === 1 ? near[0] : w;   // only an unambiguous fix
+    }).join(' ');
+  }
+
   const kind = question => (OPEN.test(question.toLowerCase()) ? 'open' : 'fact');
 
   // Splits an extract into sentences without breaking "St. Louis", "c. 1890" or "3.5 km".
@@ -80,7 +101,8 @@ const Brain = (() => {
   }
 
   // One request: search Wikipedia and fetch the introduction of the top four results.
-  async function lookup(question, getJSON) {
+  async function lookup(question, getJSON, retried = false) {
+    question = fixQuestion(question);
     const keys = keywords(question);
     if (!keys.length) return null;
     // Wikipedia's search ranks better with the whole question ("who won the 2022 world cup" finds football, not cricket),
@@ -91,7 +113,13 @@ const Brain = (() => {
       '&prop=extracts|info&inprop=url&exintro=1&explaintext=1&exlimit=4&gsrsearch=' + encodeURIComponent(query));
     const pages = Object.values((data.query && data.query.pages) || {}).sort((a, b) => a.index - b.index)
       .map(p => ({ title: p.title, url: p.fullurl, text: p.extract || '' })).filter(p => p.text);
-    return pick(question, pages);
+    const found = pick(question, pages);
+    if (!found && !retried) {   // nothing answered it: maybe misspelled, so ask Wikipedia's "did you mean" ("alen turnig")
+      const s = await getJSON('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srlimit=1&srinfo=suggestion&srsearch=' + encodeURIComponent(query));
+      const suggestion = s.query && s.query.searchinfo && s.query.searchinfo.suggestion;
+      return suggestion ? lookup(suggestion, getJSON, true) : null;
+    }
+    return found;
   }
 
   /* ---------------- Chrome's built-in AI (Prompt API) ---------------- */
@@ -143,5 +171,5 @@ const Brain = (() => {
     return null;
   }
 
-  return { kind, keywords, sentences, pick, lookup, chromeStatus, enableChrome, chromeReady, askChrome };
+  return { kind, keywords, sentences, pick, lookup, fixQuestion, chromeStatus, enableChrome, chromeReady, askChrome };
 })();

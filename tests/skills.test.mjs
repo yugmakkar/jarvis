@@ -477,3 +477,91 @@ test('companion: the landing-page demo can never reach it', async () => {
   assert.match(read('app/index.html'), /connect-src[^;]*http:\/\/127\.0\.0\.1:8765/, 'the app is');
   assert.match(read('docs/PRIVACY.md'), /127\.0\.0\.1:8765/);
 });
+
+/* ---------------- spelling ---------------- */
+
+test('spelling: misspelled commands are understood, and the reply says how', async () => {
+  const { ask, calls, opened } = boot();
+  const w = await ask('wether in mumbia');
+  assert.equal(w.understood, 'weather in mumbai');
+  assert.match(w.say, /degrees .* in Mumbai/);
+  assert.ok(calls.some(c => c.includes('name=mumbai')), 'the corrected city is looked up');
+  assert.equal((await ask('opne youtbe')).understood, 'open youtube');
+  assert.equal(opened.at(-1), 'https://www.youtube.com');
+  assert.match((await ask('set a timr for 5 minutes')).say, /^Timer set for 5 minutes/);
+  assert.match((await ask('convrt 5 mils to km')).say, /^5 miles is 8\.04672 kilometers/);
+  assert.equal((await ask('translate hello to spansh')).also.lang, 'es');
+  assert.match((await ask('whats the wether in londn')).understood, /^what the weather in london$/);
+  assert.match((await ask('remnd me in 10 minutes to strech')).say, /stretch/);
+});
+
+test('spelling: typos inside a command are fixed where they matter', async () => {
+  const { ask, opened } = boot();
+  await ask('open youtbe');                          // "open" matched as typed; the site name is corrected
+  assert.equal(opened.at(-1), 'https://www.youtube.com');
+  const { Skills } = boot();
+  const { music } = fakeMusic();
+  assert.match((await Skills.handle('play jaz', { stopSpeaking() {}, setMuted() {}, music })).say, /^Playing Sonic Universe/);
+  assert.match((await Skills.handle('play lofy beats', { stopSpeaking() {}, setMuted() {}, music })).say, /^Playing Fluid/);
+});
+
+test('spelling: correct sentences and names are never "fixed"', () => {
+  const { Skills } = boot();
+  for (const q of ['how far is the moon', 'who is jake paul', 'tell me about elon musk', 'weather in mumbai',
+    'remind me at 5 pm to call home', 'translate good morning to spanish'])
+    assert.equal(Skills.correct(q), q, q);
+  assert.equal(Skills.correct('who is alen turnig'), 'who is alen turnig', 'names go to Wikipedia as typed; it suggests the spelling');});
+
+test('spelling: an unknown name in a question reaches Wikipedia exactly as typed', async () => {
+  const { ask, calls } = boot();
+  await ask('what is the capital of france');   // "france" is not a word Jarvis knows; it must not become "trance"
+  const search = calls.find(c => c.includes('gsrsearch='));
+  assert.match(decodeURIComponent(search), /capital of france/);
+});
+
+test("spelling: questions keep the user's words, and Wikipedia's suggestion rescues misspelled names", async () => {
+  const pages = { 'alan turing': { query: { pages: { 1: { index: 1, title: 'Alan Turing', fullurl: 'https://en.wikipedia.org/wiki/Alan_Turing', extract: 'Alan Turing was an English mathematician and computer scientist.' } } } } };
+  const asked = [];
+  const getJSON = async url => {
+    asked.push(url);
+    if (url.includes('srinfo=suggestion')) return { query: { searchinfo: { suggestion: 'alan turing' } } };
+    const q = decodeURIComponent(url.split('gsrsearch=')[1]);
+    return pages[q] || { query: {} };
+  };
+  const { Brain } = boot();
+  const r = await Brain.lookup('who is alen turnig', getJSON);
+  assert.match(r.say, /^Alan Turing was an English mathematician/);
+  assert.equal(asked.length, 3, 'search, suggestion, search again');
+});
+
+/* ---------------- the voice ---------------- */
+
+test('voice: an installed British male voice wins, then online ones, each with its own speed and pitch', () => {
+  const { Skills } = boot();
+  const v = (name, lang, localService = true) => ({ name, lang, localService });
+  const edge = [v('Microsoft David - English (United States)', 'en-US'), v('Microsoft Ryan Online (Natural) - English (United Kingdom)', 'en-GB', false), v('Microsoft George - English (United Kingdom)', 'en-GB')];
+  const edgeNoUk = edge.filter(x => !/George/.test(x.name));
+  const chrome = [v('Google US English', 'en-US', false), v('Google UK English Female', 'en-GB', false), v('Google UK English Male', 'en-GB', false), v('Microsoft Zira - English (United States)', 'en-US')];
+  const mac = [v('Samantha', 'en-US'), v('Daniel', 'en-GB')];
+  const plain = [v('Microsoft David - English (United States)', 'en-US'), v('Microsoft Zira - English (United States)', 'en-US')];
+  assert.equal(Skills.voiceFor(edge).voice.name, 'Microsoft George - English (United Kingdom)', 'installed beats online');
+  assert.match(Skills.voiceFor(edgeNoUk).voice.name, /Ryan Online \(Natural\)/);
+  assert.equal(Skills.voiceFor(edgeNoUk).online, true);
+  assert.equal(Skills.voiceFor(chrome).voice.name, 'Google UK English Male');
+  assert.equal(Skills.voiceFor(mac).voice.name, 'Daniel');
+  assert.equal(Skills.voiceFor(plain).voice.name, plain[0].name, 'falls back to an installed English voice');
+  const t = Skills.voiceFor(chrome);
+  assert.ok(t.pitch < 1 && t.rate < 1, 'a touch lower and unhurried');
+  assert.equal(Skills.voiceFor(edge, { voice: edge[1].name }).voice.name, edge[1].name, 'a voice chosen in Settings wins');
+  assert.equal(Skills.voiceFor(edge, { rate: 1.3, pitch: 0.7 }).rate, 1.3);
+  assert.equal(Skills.voiceFor([]).voice, null);
+});
+
+test('spelling: question words are fixed, names are left to Wikipedia', () => {
+  const { Brain } = boot();
+  assert.equal(Brain.fixQuestion('how tal is mount everst'), 'how tall is mount everst');
+  assert.equal(Brain.fixQuestion('wen was the eifel tower bilt'), 'when was the eifel tower built');
+  assert.equal(Brain.fixQuestion('wats the capitol of austrlia'), 'whats the capital of austrlia');
+  for (const q of ['who is alen turnig', 'what is the capital of france', 'how old is the eiffel tower'])
+    assert.equal(Brain.fixQuestion(q), q, q);
+});

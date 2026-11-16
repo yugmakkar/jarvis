@@ -95,13 +95,12 @@
 
   /* ---------------- speaking ---------------- */
 
-  function pickVoice() {
+  let tuning = { rate: 1, pitch: 0.88, tuned: { rate: 1, pitch: 0.88 } };
+  function pickVoice() {   // the choice itself (best British male voice, speed, pitch) is Skills.voiceFor, which has tests
     if (!window.speechSynthesis) return;
-    const all = speechSynthesis.getVoices();
-    voice = all.find(v => v.name === Skills.settings.get('voice')) || null;   // the user's choice in Settings wins
-    if (voice) return;
-    const wanted = [/Google UK English Male/, /Microsoft (Ryan|George|Thomas)/, /en-GB/, /^en/];
-    for (const w of wanted) { const v = all.find(v => w.test(v.name) || w.test(v.lang)); if (v) { voice = v; return; } }
+    const s = Skills.settings;
+    tuning = Skills.voiceFor(speechSynthesis.getVoices(), { voice: s.get('voice'), rate: s.get('rate'), pitch: s.get('pitch') });
+    voice = tuning.voice;
   }
 
   function chirp() {   // short acknowledgement tone; much quicker than saying "Yes, sir?"
@@ -120,7 +119,7 @@
       const u = new SpeechSynthesisUtterance(text);
       if (lang) { u.lang = lang; const match = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())); if (match) u.voice = match; }
       else if (voice) u.voice = voice;
-      u.rate = Number(Skills.settings.get('rate', 1.05)) || 1.05; u.pitch = 0.9;
+      u.rate = tuning.rate; u.pitch = tuning.pitch;
       let finished = false;
       const done = () => { if (finished) return; finished = true; clearTimeout(guard); deafUntil = Date.now() + 400; resolve(); };
       const guard = setTimeout(done, 25000);   // some browsers never fire onend
@@ -152,6 +151,7 @@
     setState('thinking');
     const reply = await Skills.handle(text, ctx);
     if (id !== turn) return;            // a newer command arrived while we were fetching
+    if (reply.understood) log('fix', `understood: ${reply.understood}`);
     if (reply.card) showCard(reply.card);
     if (reply.say) { log('ai', reply.say); await speak(reply.say); }
     if (reply.also && id === turn) { log('ai', reply.also.text); await speak(reply.also.text, reply.also.lang); }
@@ -325,17 +325,29 @@
     $('setName').value = s.get('name', '');
     $('setCity').value = s.get('city', '');
     $('setWake').value = s.get('wake', 'jarvis');
-    $('setRate').value = s.get('rate', 1.05);
+    $('setRate').value = tuning.rate;
+    $('setPitch').value = tuning.pitch;
     $('setSpeech').checked = s.get('speech', true);
     $('setRecog').value = s.get('voiceMode', 'prefer');
     showAiStatus();
     Skills.probeCompanion().then(() => { $('compStatus').textContent = { paired: 'Paired. Jarvis can open your apps and folders, control media and volume, and lock the screen.', unpaired: 'Running, not paired. Type the six-digit code from the companion window.', off: 'Not running. Start start-companion in the Jarvis folder to let Jarvis control this computer.' }[Skills.companionLabel().startsWith('paired') ? 'paired' : Skills.companionLabel() === 'not paired' ? 'unpaired' : 'off']; });
     const voices = window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
-    $('setVoice').replaceChildren(new Option('Automatic', ''), ...voices.map(v => new Option(`${v.name} (${v.lang})`, v.name)));
+    $('setVoice').replaceChildren(new Option('Automatic (best British voice)', ''), ...voices.map(v => new Option(`${v.name} (${v.lang})${v.localService === false ? ' · online' : ''}`, v.name)));
     $('setVoice').value = s.get('voice', '');
     $('settings').showModal();
   }
   $('settingsBtn').addEventListener('click', openSettings);
+  $('hearBtn').addEventListener('click', () => {   // hear the current choice before saving
+    const keep = tuning;
+    const v = Skills.voiceFor(speechSynthesis.getVoices(), { voice: $('setVoice').value });
+    tuning = { ...v, rate: Number($('setRate').value), pitch: Number($('setPitch').value) };
+    voice = v.voice;
+    speak(`Good ${new Date().getHours() < 12 ? 'morning' : 'evening'}, ${Skills.settings.get('name', 'sir')}. All systems are online and at your service.`).then(() => { tuning = keep; voice = keep.voice; idle(); });
+  });
+  $('setVoice').addEventListener('change', () => {   // a new voice brings its own speed and pitch
+    const t = Skills.voiceFor(speechSynthesis.getVoices(), { voice: $('setVoice').value }).tuned;
+    $('setRate').value = t.rate; $('setPitch').value = t.pitch;
+  });
 
   // Chrome's built-in AI: free and on-device. Chrome downloads the model once, and only after this click.
   const AI_TEXT = {
@@ -377,7 +389,10 @@
     s.set('city', text('setCity') || null);
     s.set('wake', text('setWake').toLowerCase() || null);
     s.set('voice', $('setVoice').value || null);
-    s.set('rate', Number($('setRate').value));
+    // Speed and pitch are saved only when they differ from the chosen voice's own tuning, so changing voice re-tunes them.
+    const tuned = Skills.voiceFor(window.speechSynthesis ? speechSynthesis.getVoices() : [], { voice: $('setVoice').value }).tuned;
+    s.set('rate', Math.abs(Number($('setRate').value) - tuned.rate) > 0.01 ? Number($('setRate').value) : null);
+    s.set('pitch', Math.abs(Number($('setPitch').value) - tuned.pitch) > 0.01 ? Number($('setPitch').value) : null);
     s.set('speech', $('setSpeech').checked);
     const recogChanged = $('setRecog').value !== s.get('voiceMode', 'prefer');
     s.set('voiceMode', $('setRecog').value === 'prefer' ? null : $('setRecog').value);

@@ -63,8 +63,9 @@ const Skills = (() => {
     let place, lat, lon;
     city = city || store.get('city');
     if (city) {
-      const geo = await getJSON('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(city));
-      const hit = geo.results && geo.results[0];
+      city = (!CITIES.includes(city.toLowerCase()) && closestPhrase(city, CITIES)) || city;   // "mumbia" -> mumbai
+      const geo = await getJSON('https://geocoding-api.open-meteo.com/v1/search?count=5&name=' + encodeURIComponent(city));
+      const hit = (geo.results || []).slice().sort((a, b) => (b.population || 0) - (a.population || 0))[0];
       if (!hit) return { say: `I couldn't find a place called ${city}, ${sir()}.` };
       ({ latitude: lat, longitude: lon } = hit);
       place = hit.name + (hit.country_code ? ', ' + hit.country_code : '');
@@ -128,7 +129,8 @@ const Skills = (() => {
   }
 
   function openSite(name) {
-    const key = name.toLowerCase().replace(/^the\s+|\s+website$|\.com$/g, '').trim();
+    let key = name.toLowerCase().replace(/^the\s+|\s+website$|\.com$/g, '').trim();
+    if (!SITES[key] && !/\.[a-z]{2,}$/.test(key)) key = closest(key, Object.keys(SITES)) || key;   // "youtbe" -> youtube
     const url = SITES[key] || (/\.[a-z]{2,}$/.test(key) ? 'https://' + key.replace(/\s+/g, '') : `https://www.${key.replace(/\s+/g, '')}.com`);
     return openUrl(url, `Opening ${key}.`);
   }
@@ -168,6 +170,10 @@ const Skills = (() => {
 
   async function play(what, ctx) {
     const wanted = what.replace(/\b(some|music|songs?|radio|station|please|me|for me)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!STATIONS.some(s => s[3].test(what))) {   // "play jaz", "play lofy": correct the genre words, then look again
+      const genres = [...new Set(STATIONS.flatMap(s => s[3].source.toLowerCase().match(/[a-z]{3,}/g) || []))];
+      what = what.split(' ').map(w => (w.length > 2 && closest(w, genres, Math.max(1, typosAllowed(w)))) || w).join(' ');
+    }
     const match = STATIONS.find(s => s[3].test(what)) || null;
     const pick = match || station('groovesalad');
     if (!ctx || !ctx.music) return { say: `In the full app I would start ${pick[1]} now, ${sir()}.`, card: nowCard(pick) };
@@ -418,6 +424,7 @@ const Skills = (() => {
     japanese: 'ja', korean: 'ko', chinese: 'zh-CN' };
 
   async function translate(phrase, language) {
+    language = LANGS[language] ? language : closest(language, Object.keys(LANGS)) || language;   // "spansh" -> spanish
     const lang = LANGS[language];
     if (!lang) return { say: `I can't translate into ${language} yet, ${sir()}.` };
     const data = await getJSON(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(phrase)}&langpair=en|${lang}`);
@@ -606,7 +613,11 @@ const Skills = (() => {
     [/^(?:unpair|forget|disconnect) (?:the )?(?:pc )?companion$/, () => { store.set('companionToken', null); comp.state = 'off'; comp.apps = []; return { say: 'Companion forgotten. To stop it trusting this page too, type unpair in its window.' }; }],
     [/^lock (?:the |my |this )?(?:computer|pc|screen|laptop|desktop|workstation)$/, (m, ctx) => pc(ctx, 'lock', '', 'Locking the computer.')],
     [/^open (?:my |the )?(downloads|documents|desktop|pictures|photos|music|videos|home)(?: folder)?$/, (m, ctx) => pc(ctx, 'open_folder', m[1], `Opening your ${m[1]} folder.`)],
-    [/^(?:open|launch|start|run) (.+)$/, (m, ctx) => (comp.state === 'paired' && comp.apps.includes(appName(m[1])) ? pc(ctx, 'open_app', appName(m[1]), `Opening ${appName(m[1])}.`) : null)],
+    [/^(?:open|launch|start|run) (.+)$/, (m, ctx) => {
+      if (comp.state !== 'paired') return null;
+      const app = comp.apps.includes(appName(m[1])) ? appName(m[1]) : closest(appName(m[1]), comp.apps);   // "spotfy" -> spotify
+      return app ? pc(ctx, 'open_app', app, `Opening ${app}.`) : null;
+    }],
     [/^(?:pause|resume|unpause|stop|continue) (?:the )?(?:music|song|track|video|media|playback|spotify)$|^(?:resume|unpause)$/, (m, ctx) => {
       if (radioOn(ctx) || (ctx && ctx.music && ctx.music.loaded && /resume|unpause|continue/.test(m[0]))) return null;
       return comp.state === 'paired' ? pc(ctx, 'media', 'playpause', '') : null;
@@ -650,21 +661,156 @@ const Skills = (() => {
   const EXAMPLES = ['Brief me', 'Weather in Mumbai', 'Who is Alan Turing', 'Remind me in 10 minutes to stretch', 'Convert 100 dollars to rupees',
     'Translate good morning to Spanish', 'How many grams in a pound', 'What is 18 times 24', 'How far is the moon', 'Tech news', 'Play lo-fi music', 'Days until Christmas', 'What do you know about me'];
 
+
+  /* ---------------- spelling: understands typos, entirely on this device ---------------- */
+  // Two passes. A command is first tried exactly as typed or heard. Only if nothing understands it is each unknown
+  // word replaced by the closest known word (one typo allowed in short words, two in long ones) and the command
+  // tried again. Known words are never changed, so correct sentences are never "fixed".
+
+  // Optimal string alignment distance: insertions, deletions, substitutions, and swapping two neighbours each count as one.
+  function distance(a, b) {
+    if (Math.abs(a.length - b.length) > 2) return 3;
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+    return d[a.length][b.length];
+  }
+  const typosAllowed = w => (w.length <= 3 ? 0 : w.length <= 5 ? 1 : 2);
+
+  // The closest candidate, or null when none is close enough or two are equally close (better to ask than to guess).
+  // `allow` widens the typo budget for short lists, such as music genres ("jaz" -> jazz).
+  // Ties go to the candidate of the same length (swapped letters keep the length: "opne" -> open, not one).
+  function closest(word, candidates, allow = typosAllowed(word)) {
+    let best = null, bestKey = [allow + 1, 0], tie = false;
+    for (const c of candidates) {
+      if (c === word) return c;
+      const key = [distance(word, c), Math.abs(c.length - word.length)];
+      const cmp = key[0] - bestKey[0] || key[1] - bestKey[1];
+      if (key[0] > allow) continue;
+      if (!best || cmp < 0) { best = c; bestKey = key; tie = false; }
+      else if (cmp === 0 && !c.startsWith(best) && !best.startsWith(c)) tie = true;   // "mile" and "miles" are not a real tie
+    }
+    return best && !tie ? best : null;
+  }
+
+  const CITIES = ['mumbai', 'delhi', 'new delhi', 'bangalore', 'bengaluru', 'hyderabad', 'ahmedabad', 'chennai', 'kolkata', 'pune',
+    'jaipur', 'surat', 'lucknow', 'kanpur', 'nagpur', 'indore', 'thane', 'bhopal', 'visakhapatnam', 'patna', 'vadodara', 'ludhiana',
+    'agra', 'nashik', 'faridabad', 'meerut', 'rajkot', 'varanasi', 'srinagar', 'amritsar', 'chandigarh', 'guwahati', 'kochi',
+    'coimbatore', 'mysore', 'goa', 'noida', 'gurgaon', 'gurugram', 'dehradun', 'shimla', 'udaipur', 'jodhpur',
+    'london', 'paris', 'berlin', 'madrid', 'rome', 'milan', 'amsterdam', 'brussels', 'vienna', 'zurich', 'geneva', 'prague', 'warsaw',
+    'budapest', 'athens', 'lisbon', 'dublin', 'edinburgh', 'manchester', 'barcelona', 'munich', 'stockholm', 'oslo', 'copenhagen',
+    'helsinki', 'moscow', 'istanbul', 'dubai', 'abu dhabi', 'doha', 'riyadh', 'cairo', 'lagos', 'nairobi', 'johannesburg', 'cape town',
+    'tokyo', 'osaka', 'kyoto', 'seoul', 'beijing', 'shanghai', 'hong kong', 'singapore', 'bangkok', 'jakarta', 'manila', 'kuala lumpur',
+    'hanoi', 'karachi', 'lahore', 'islamabad', 'dhaka', 'kathmandu', 'colombo', 'sydney', 'melbourne', 'brisbane', 'perth', 'auckland',
+    'new york', 'los angeles', 'chicago', 'houston', 'san francisco', 'seattle', 'boston', 'miami', 'washington', 'las vegas',
+    'toronto', 'vancouver', 'montreal', 'mexico city', 'sao paulo', 'rio de janeiro', 'buenos aires', 'lima', 'bogota', 'santiago'];
+
+  // Everyday words, so they are recognised as correct and can themselves be corrected ("whats teh wether").
+  const COMMON = ('about after again also always another answer any anything are around back because been before being best better ' +
+    'between both bring call came can cannot come could day did does doing done down each easy even every everything find first ' +
+    'from game give going good great happen have help here home hour into just keep kind know last left like little long look ' +
+    'made make many maybe mean might more most much must name need never next nice night nothing number often only open other ' +
+    'over people place please point pretty put question quick quite read ready real really right same saw say second see seem ' +
+    'should show since small some something soon start still such sure take talk tell than thank thanks that their them then there ' +
+    'these they thing things think this those though thought through today together tomorrow tonight took true try turn under ' +
+    'until very want wanted watch water week well went were what when where which while who whole whose why will with without ' +
+    'word work world would write wrong year yesterday your yours capital country population president largest biggest highest ' +
+    'distance speed height people born invented discovered meaning explain difference between temperature minutes seconds hours ' +
+    'percent degrees kilometers kilometres miles meters metres grams pounds dollars rupees euros').split(' ');
+
+  let vocabulary = null;   // built on first use, from every word the skills themselves understand
+  function vocab() {
+    if (vocabulary) return vocabulary;
+    const words = new Set(COMMON);
+    const add = text => { for (const w of String(text).toLowerCase().match(/[a-z]{3,}/g) || []) words.add(w); };
+    ROUTES.forEach(([re]) => add(re.source));
+    STATIONS.forEach(s => { add(s[1]); add(s[3].source); });
+    [SITES, LANGS, TEMPS, CURRENCIES, HOLIDAYS].forEach(t => add(Object.keys(t).join(' ')));
+    Object.values(UNIT_TABLE).forEach(dim => add(Object.keys(dim).join(' ')));
+    add(MONTHS.join(' ')); add(CITIES.join(' ')); add(EXAMPLES.join(' '));
+    return (vocabulary = [...words]);
+  }
+
+  // Every known word within the typo budget, nearest first (same length first: swapped letters keep the length).
+  function candidates(word, known, allow = typosAllowed(word)) {
+    const scored = [];
+    for (const c of known) { const d = distance(word, c); if (d <= allow) scored.push([d, Math.abs(c.length - word.length), c]); }
+    const best = Math.min(...scored.map(x => x[0]));
+    return scored.filter(x => x[0] === best).sort((x, y) => x[1] - y[1]).map(x => x[2]);
+  }
+
+  // The likely spellings of a sentence, most likely first. Several are kept when a typo is close to more than one word
+  // ("timr": time or timer); handle() keeps the first one a skill actually understands. Known words are never changed,
+  // and words after "who is" or "tell me about" are names, so they are left alone ("who is jake paul").
+  function corrections(text) {
+    if (/^(?:who (?:is|was|are|were)|tell me about) /.test(text)) return [];
+    const known = vocab(), set = new Set(known);
+    let out = [[]];
+    for (const w of text.split(' ')) {
+      const options = /^[a-z]{4,}$/.test(w) && !set.has(w) ? candidates(w, known).slice(0, 3) : [];
+      out = out.flatMap(s => (options.length ? options : [w]).map(c => [...s, c])).slice(0, 12);
+    }
+    return out.map(s => s.join(' ')).filter(s => s !== text);
+  }
+  const correct = text => corrections(text)[0] || text;   // the single most likely spelling
+
+  // For names made of several words (cities, sites): compares the whole phrase.
+  const closestPhrase = (phrase, list) => closest(phrase.toLowerCase().trim(), list);
+
+  /* ---------------- the voice ---------------- */
+  // Jarvis speaks as a calm, crisp British gentleman: a touch lower than the voice's natural pitch, unhurried but
+  // never slow. These are the best free voices browsers and operating systems ship, best first, each with the
+  // speed and pitch that suit it (neural voices sound wrong pitched down far; older voices need it more).
+  // Settings can override the voice, speed and pitch. Nothing here imitates a real person's recorded voice.
+  // Voices installed on the device come first: with an online voice, the browser sends what Jarvis says to Google or
+  // Microsoft to be spoken. Online British voices are used only when no British voice is installed.
+  const VOICES = [   // [name pattern, rate, pitch, required language]
+    [/^Microsoft (George|Ryan|Thomas)\b(?!.*Online)/i, 1.06, 0.88, /^en-GB/i],                                 // Windows (installed)
+    [/^(Daniel|Arthur|Oliver|Malcolm)\b/i, 1.0, 0.95, /^en-GB/i],                                               // macOS, iOS (installed)
+    [/^Microsoft (Ryan|Thomas|Oliver|Elliot|Alfie|Noah|Ethan) Online \(Natural\)/i, 1.0, 0.95, /^en-GB/i],       // Edge (online)
+    [/^Google UK English Male$/i, 0.96, 0.9, null],                                                              // Chrome (online)
+  ];
+  function voiceFor(voices, saved = {}) {
+    let voice = saved.voice ? voices.find(v => v.name === saved.voice) || null : null, rate = 1.0, pitch = 0.88;
+    const row = v => VOICES.find(([re, , , lang]) => re.test(v.name) && (!lang || lang.test(v.lang)));
+    if (!voice) for (const r of VOICES) { voice = voices.find(v => row(v) === r) || null; if (voice) break; }
+    // No British voice at all: any installed English voice, a little lower (better than an online one)
+    if (!voice) voice = voices.find(v => /^en-GB/i.test(v.lang) && v.localService !== false) || voices.find(v => /^en/i.test(v.lang) && v.localService !== false)
+      || voices.find(v => /^en/i.test(v.lang)) || null;
+    if (voice && row(voice)) [, rate, pitch] = row(voice);
+    return { voice, rate: Number(saved.rate) || rate, pitch: Number(saved.pitch) || pitch, tuned: { rate, pitch }, online: !!voice && voice.localService === false };
+  }
+
+  async function route(text, ctx) {
+    for (const [pattern, run] of ROUTES) {
+      const m = text.match(pattern);
+      if (!m) continue;
+      const reply = await run(m, ctx);
+      if (reply) return reply;   // a skill may return null to say "not mine", and the next one gets a try
+    }
+    return math(text);
+  }
+
   async function handle(raw, ctx) {
     if (ctx && !host) attach(ctx);
     const text = raw.toLowerCase().trim().replace(new RegExp('^(?:hey |ok |okay |hi )?(?:' + wakeWords() + ')\\b[,.!?]*\\s*'), '')
       .replace(/^(please |can you |could you |would you )+|( please)?[.?!]*$/g, '').trim();
     if (!text) return { say: `Yes, ${sir()}?` };
     try {
-      for (const [pattern, run] of ROUTES) {
-        const m = text.match(pattern);
-        if (!m) continue;
-        const reply = await run(m, ctx);
-        if (reply) return reply;   // a skill may return null to say "not mine", and the next one gets a try
+      let reply = await route(text, ctx);
+      if (reply) return reply;
+      // Nothing understood it as typed: try the likely spellings ("wether in mumbia" -> "weather in mumbai").
+      for (const fixed of corrections(text)) {
+        reply = await route(fixed, ctx);
+        if (reply) { reply.understood = fixed; return reply; }
       }
-      const sum = math(text);
-      if (sum) return sum;
-      // Anything unrecognised is a question: see answer() above.
+      // Still nothing: it's a question (see answer() above). It is asked in the user's own words, because Wikipedia's
+      // search and the AI both handle typos in names better than a word list can ("capital of france" stays france).
       return await answer(text, ctx);
     } catch (err) {
       console.error(err);
@@ -674,6 +820,6 @@ const Skills = (() => {
   }
 
   const streamUrls = id => STREAM_HOSTS.map(h => `https://${h}/${id}-128-mp3`);
-  return { handle, wake, attach, systemRows, probeBrain, brain, persona, streamUrls, probeCompanion, pairCompanion, companionLabel, stationName: id => (station(id) || [])[1],
+  return { handle, wake, attach, correct, voiceFor, systemRows, probeBrain, brain, persona, streamUrls, probeCompanion, pairCompanion, companionLabel, stationName: id => (station(id) || [])[1],
     settings: store, examples: EXAMPLES };
 })();

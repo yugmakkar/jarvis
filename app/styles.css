@@ -180,3 +180,5 @@ dialog .buttons .primary { color: #02050a; background: #4fd8ff; border-color: #4
   .card, .log div { animation: none; }
   .boot-ring { animation-duration: 6s; }
 }
+
+.log .fix { color: var(--dim); font-style: italic; font-size: .92em; }   /* "understood: ..." after a typo was corrected */
